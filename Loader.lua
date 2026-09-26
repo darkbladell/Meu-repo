@@ -4,8 +4,7 @@
 -- ============================================
 
 local FONTES = {
-    "https://raw.githubusercontent.com/joaozinho/script-tb/main/tb_duels.lua",
-    "https://raw.githubusercontent.com/joaozinho/script-tb/main/tb_duels.lua",
+    "https://raw.githubusercontent.com/darkbladell/Meu-repo/main/tb_duels.lua",
 }
 local carregado = false
 local ultimoErro = nil
