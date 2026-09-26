@@ -1,11 +1,10 @@
 -- ============================================
--- TB DUELS MOBILE - SCRIPT PRINCIPAL
+-- TB DUELS MOBILE - SCRIPT PRINCIPAL v1.1
 -- Carregado via: loadstring(game:HttpGet("..."))()
 -- ============================================
 
--- Verifica se já carregou
 if _G.TB_LOADED then
-    warn("[TB] Script já está rodando. Feche o Roblox pra recarregar.")
+    warn("[TB] Script já está rodando.")
     return
 end
 _G.TB_LOADED = true
@@ -29,7 +28,7 @@ local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
 local LP = Players.LocalPlayer
 
--- ===== CONFIG GLOBAL =====
+-- ===== CONFIG =====
 _G.TB = _G.TB or {}
 local TB = _G.TB
 
@@ -41,8 +40,9 @@ TB.CFG = {
     ESP = false,
     BugMove = false,
     MoveMode = "Ir e Voltar",
-    BugSpeed = 8,
-    BugDistance = 6,
+    BugSpeed = 3,
+    BugDistance = 4,
+    SmoothFactor = 0.15,  -- quanto menor, mais suave
     Recording = false,
     Playing = false,
 }
@@ -53,18 +53,16 @@ TB.ORIGINAL_FOV = workspace.CurrentCamera.FieldOfView
 
 local CFG = TB.CFG
 
--- ===== JANELA RAYFIELD =====
+-- ===== JANELA =====
 local Window = Rayfield:CreateWindow({
     Name = "TB Duels Mobile",
     LoadingTitle = "Carregando TB Duels...",
-    LoadingSubtitle = "v1.0.0",
-    ConfigurationSaving = {
-        Enabled = false,
-    },
+    LoadingSubtitle = "v1.1.0",
+    ConfigurationSaving = { Enabled = false },
     KeySystem = false,
 })
 
--- ===== FUNÇÕES =====
+-- ===== ANTI-LAG =====
 local function applyAntiLag(on)
     CFG.AntiLag = on
     if on then
@@ -95,6 +93,7 @@ local function applyAntiLag(on)
     end
 end
 
+-- ===== FPS BOOST =====
 local fpsBoostConn = nil
 
 local function cleanChar(char)
@@ -137,6 +136,7 @@ local function applyFPSBoost(on)
     end
 end
 
+-- ===== TELA ESTICADA =====
 local function applyStretched(on)
     CFG.Stretched = on
     local cam = workspace.CurrentCamera
@@ -231,10 +231,12 @@ local function startBugMove()
         if not CFG.BugMove then return end
         local h = getHRP()
         if not h then return end
+
         moveT = moveT + dt
         local mode = CFG.MoveMode or "Ir e Voltar"
-        local speed = CFG.BugSpeed or 8
-        local dist = CFG.BugDistance or 6
+        local speed = CFG.BugSpeed or 3
+        local dist = CFG.BugDistance or 4
+        local smooth = CFG.SmoothFactor or 0.15
         local offset = Vector3.zero
 
         if mode == "Ir e Voltar" then
@@ -247,14 +249,16 @@ local function startBugMove()
             local a = moveT * speed
             offset = Vector3.new(math.cos(a) * dist, 0, math.sin(a) * dist)
         elseif mode == "Teleporte" then
-            local s = math.sin(moveT * speed * 3)
-            offset = Vector3.new(0, 0, -dist * (s > 0 and 1 or 0))
+            local s = math.sin(moveT * speed * 2)
+            offset = Vector3.new(0, 0, -dist * 0.5 * (s > 0 and 1 or 0))
         elseif mode == "Loop Aéreo" then
             local s = math.sin(moveT * speed)
-            offset = Vector3.new(0, dist * s * 0.7, -dist * s)
+            offset = Vector3.new(0, dist * s * 0.5, -dist * s)
         end
 
-        h.CFrame = moveOrigin * CFrame.new(offset)
+        -- 🔑 Lerp suaviza o movimento (anti-detecção)
+        local targetCF = moveOrigin * CFrame.new(offset)
+        h.CFrame = h.CFrame:Lerp(targetCF, smooth)
         h.Velocity = Vector3.zero
     end)
 end
@@ -264,6 +268,7 @@ local function stopBugMove()
     if bugMoveConn then bugMoveConn:Disconnect() bugMoveConn = nil end
 end
 
+-- ===== RECORD / PLAYBACK =====
 local function startRecording()
     if CFG.Playing then return end
     TB.recordBuffer = {}
@@ -308,7 +313,7 @@ local function startPlayback()
         end
         for i = #TB.recordBuffer, 1, -1 do
             if TB.recordBuffer[i].t <= elapsed then
-                h.CFrame = TB.recordBuffer[i].cf
+                h.CFrame = h.CFrame:Lerp(TB.recordBuffer[i].cf, 0.3)
                 h.Velocity = Vector3.zero
                 break
             end
@@ -326,32 +331,25 @@ local VisualTab = Window:CreateTab("Visual", 4483362458)
 
 VisualTab:CreateToggle({
     Name = "Anti-Lag Máximo",
-    CurrentValue = false,
-    Flag = "AntiLag",
+    CurrentValue = false, Flag = "AntiLag",
     Callback = function(v) applyAntiLag(v) end,
 })
 
 VisualTab:CreateToggle({
     Name = "FPS Boost Extra",
-    CurrentValue = false,
-    Flag = "FPSBoost",
+    CurrentValue = false, Flag = "FPSBoost",
     Callback = function(v) applyFPSBoost(v) end,
 })
 
 VisualTab:CreateToggle({
     Name = "Tela Esticada",
-    CurrentValue = false,
-    Flag = "Stretched",
+    CurrentValue = false, Flag = "Stretched",
     Callback = function(v) applyStretched(v) end,
 })
 
 VisualTab:CreateSlider({
-    Name = "FOV",
-    Range = {70, 140},
-    Increment = 1,
-    Suffix = "FOV",
-    CurrentValue = 120,
-    Flag = "FOV",
+    Name = "FOV", Range = {70, 140}, Increment = 1, Suffix = "FOV",
+    CurrentValue = 120, Flag = "FOV",
     Callback = function(v)
         CFG.FOV = v
         if CFG.Stretched then workspace.CurrentCamera.FieldOfView = v end
@@ -364,8 +362,7 @@ local MoveTab = Window:CreateTab("Movimento", 4483362458)
 MoveTab:CreateDropdown({
     Name = "Modo de Movimento",
     Options = {"Ir e Voltar", "Zigue-Zague", "Círculo", "Teleporte", "Loop Aéreo"},
-    CurrentOption = {"Ir e Voltar"},
-    Flag = "MoveMode",
+    CurrentOption = {"Ir e Voltar"}, Flag = "MoveMode",
     Callback = function(opt)
         CFG.MoveMode = type(opt) == "table" and opt[1] or opt
         local h = getHRP()
@@ -374,29 +371,26 @@ MoveTab:CreateDropdown({
 })
 
 MoveTab:CreateSlider({
-    Name = "Velocidade",
-    Range = {1, 20},
-    Increment = 1,
-    Suffix = "x",
-    CurrentValue = 8,
-    Flag = "BugSpeed",
+    Name = "Velocidade", Range = {1, 10}, Increment = 1, Suffix = "x",
+    CurrentValue = 3, Flag = "BugSpeed",
     Callback = function(v) CFG.BugSpeed = v end,
 })
 
 MoveTab:CreateSlider({
-    Name = "Distância",
-    Range = {1, 20},
-    Increment = 1,
-    Suffix = "studs",
-    CurrentValue = 6,
-    Flag = "BugDistance",
+    Name = "Distância", Range = {1, 10}, Increment = 1, Suffix = "studs",
+    CurrentValue = 4, Flag = "BugDistance",
     Callback = function(v) CFG.BugDistance = v end,
+})
+
+MoveTab:CreateSlider({
+    Name = "Suavidade (Lerp)", Range = {5, 50}, Increment = 1, Suffix = "%",
+    CurrentValue = 15, Flag = "SmoothFactor",
+    Callback = function(v) CFG.SmoothFactor = v / 100 end,
 })
 
 MoveTab:CreateToggle({
     Name = "Movimento Bugado",
-    CurrentValue = false,
-    Flag = "BugMove",
+    CurrentValue = false, Flag = "BugMove",
     Callback = function(v)
         if v then startBugMove() else stopBugMove() end
     end,
@@ -406,8 +400,7 @@ MoveTab:CreateSection("Gravação")
 
 MoveTab:CreateToggle({
     Name = "Gravar Movimento",
-    CurrentValue = false,
-    Flag = "Recording",
+    CurrentValue = false, Flag = "Recording",
     Callback = function(v)
         if v then startRecording() else stopRecording() end
     end,
@@ -415,8 +408,7 @@ MoveTab:CreateToggle({
 
 MoveTab:CreateToggle({
     Name = "Repetir Movimento",
-    CurrentValue = false,
-    Flag = "Playing",
+    CurrentValue = false, Flag = "Playing",
     Callback = function(v)
         if v then startPlayback() else stopPlayback() end
     end,
@@ -427,8 +419,7 @@ local ESPTab = Window:CreateTab("ESP", 4483362458)
 
 ESPTab:CreateToggle({
     Name = "ESP Players",
-    CurrentValue = false,
-    Flag = "ESP",
+    CurrentValue = false, Flag = "ESP",
     Callback = function(v) applyESP(v) end,
 })
 
@@ -438,13 +429,9 @@ local ExtraTab = Window:CreateTab("Extras", 4483362458)
 ExtraTab:CreateButton({
     Name = "Resetar Tudo",
     Callback = function()
-        stopBugMove()
-        stopRecording()
-        stopPlayback()
-        applyAntiLag(false)
-        applyFPSBoost(false)
-        applyStretched(false)
-        applyESP(false)
+        stopBugMove(); stopRecording(); stopPlayback()
+        applyAntiLag(false); applyFPSBoost(false)
+        applyStretched(false); applyESP(false)
         TB.recordBuffer = {}
         print("[TB] Reset completo")
     end,
@@ -458,11 +445,10 @@ ExtraTab:CreateButton({
     end,
 })
 
--- ===== NOTIFY =====
 Rayfield:Notify({
-    Title = "TB Duels",
-    Content = "Script carregado com sucesso!",
+    Title = "TB Duels v1.1",
+    Content = "Script carregado!",
     Duration = 3,
 })
 
-print("✅ TB Duels carregado via loadstring")
+print("✅ TB Duels v1.1 carregado")
