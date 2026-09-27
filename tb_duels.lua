@@ -1,63 +1,37 @@
 -- ============================================
--- TB DUELS MOBILE - SCRIPT PRINCIPAL v1.1
--- Carregado via: loadstring(game:HttpGet("..."))()
+-- TB DUELS MOBILE - v1.2
+-- FOV + FPS Boost + Skybox + Movimento Bugado
 -- ============================================
 
-if _G.TB_LOADED then
-    warn("[TB] Script já está rodando.")
-    return
-end
+if _G.TB_LOADED then return end
 _G.TB_LOADED = true
 
--- ===== CARREGA RAYFIELD =====
-local Rayfield
-local sucesso, erro = pcall(function()
-    Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-end)
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
-if not sucesso or not Rayfield then
-    warn("[TB] Falha ao carregar Rayfield: " .. tostring(erro))
-    _G.TB_LOADED = false
-    return
-end
-
--- ===== SERVIÇOS =====
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
 local LP = Players.LocalPlayer
 
--- ===== CONFIG =====
 _G.TB = _G.TB or {}
 local TB = _G.TB
 
 TB.CFG = {
-    AntiLag = false,
-    FPSBoost = false,
-    Stretched = false,
-    FOV = 120,
-    ESP = false,
-    BugMove = false,
-    MoveMode = "Ir e Voltar",
-    BugSpeed = 3,
-    BugDistance = 4,
-    SmoothFactor = 0.15,  -- quanto menor, mais suave
-    Recording = false,
-    Playing = false,
+    AntiLag = false, FPSBoost = false,
+    FOVEnabled = false, FOV = 120,
+    ESP = false, BugMove = false,
+    BugDistance = 3, Skybox = "Nenhum",
+    Recording = false, Playing = false,
 }
-
 TB.recordBuffer = {}
-TB.MAX_RECORD_TIME = 15
 TB.ORIGINAL_FOV = workspace.CurrentCamera.FieldOfView
-
 local CFG = TB.CFG
 
--- ===== JANELA =====
 local Window = Rayfield:CreateWindow({
     Name = "TB Duels Mobile",
-    LoadingTitle = "Carregando TB Duels...",
-    LoadingSubtitle = "v1.1.0",
+    LoadingTitle = "Carregando...",
+    LoadingSubtitle = "v1.2",
     ConfigurationSaving = { Enabled = false },
     KeySystem = false,
 })
@@ -124,24 +98,97 @@ local function applyFPSBoost(on)
                 end
             end)
         end)
-        for _, v in ipairs(Workspace:GetDescendants()) do
-            pcall(function()
-                if v:IsA("Sky") or v:IsA("Atmosphere") or v:IsA("Clouds") then
-                    v.Parent = nil
-                end
-            end)
-        end
     else
         if fpsBoostConn then fpsBoostConn:Disconnect() fpsBoostConn = nil end
     end
 end
 
--- ===== TELA ESTICADA =====
-local function applyStretched(on)
-    CFG.Stretched = on
+-- ===== FOV (simula tela esticada) =====
+local function applyFOV(on)
+    CFG.FOVEnabled = on
     local cam = workspace.CurrentCamera
     if on then cam.FieldOfView = CFG.FOV
     else cam.FieldOfView = TB.ORIGINAL_FOV end
+end
+
+-- ===== SKYBOX =====
+local function setSkybox(name)
+    CFG.Skybox = name
+    for _, v in ipairs(Lighting:GetChildren()) do
+        if v:IsA("Sky") then v:Destroy() end
+    end
+    if name == "Nenhum" then return end
+
+    local sky = Instance.new("Sky")
+    sky.Parent = Lighting
+
+    if name == "Purple" then
+        sky.SkyboxBk = "rbxassetid://6021017254"
+        sky.SkyboxDn = "rbxassetid://6021016390"
+        sky.SkyboxFt = "rbxassetid://6021011228"
+        sky.SkyboxLf = "rbxassetid://6021011228"
+        sky.SkyboxRt = "rbxassetid://6021011228"
+        sky.SkyboxUp = "rbxassetid://6021011228"
+    elseif name == "Night" then
+        sky.SkyboxBk = "rbxassetid://6021017254"
+        sky.SkyboxDn = "rbxassetid://6021016390"
+        sky.SkyboxFt = "rbxassetid://6021011228"
+        sky.SkyboxLf = "rbxassetid://6021011228"
+        sky.SkyboxRt = "rbxassetid://6021011228"
+        sky.SkyboxUp = "rbxassetid://6021011228"
+        sky.StarCount = 5000
+    elseif name == "Dragon" then
+        -- IDs de exemplo (troque pelos corretos do catálogo)
+        sky.SkyboxBk = "rbxassetid://92767799"
+        sky.SkyboxDn = "rbxassetid://92767799"
+        sky.SkyboxFt = "rbxassetid://92767799"
+        sky.SkyboxLf = "rbxassetid://92767799"
+        sky.SkyboxRt = "rbxassetid://92767799"
+        sky.SkyboxUp = "rbxassetid://92767799"
+    end
+end
+
+-- ===== MOVIMENTO BUGADO (BASEADO EM ESTADO) =====
+local bugConn, originalCF = nil, nil
+
+local function getHRP()
+    local char = LP.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function startBugMove()
+    if bugConn then return end
+    CFG.BugMove = true
+
+    bugConn = RunService.Heartbeat:Connect(function()
+        if not CFG.BugMove then return end
+        local char = LP.Character
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hum or not hrp then return end
+
+        local state = hum:GetState()
+        -- Detecta pulo ou escalada
+        if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Climbing then
+            if not originalCF then originalCF = hrp.CFrame end
+            local fwd = hrp.CFrame.LookVector
+            local dist = CFG.BugDistance * 0.1
+            -- Alterna frente/trás a cada frame
+            hrp.CFrame = hrp.CFrame + (math.random() > 0.5 and fwd or -fwd) * dist
+        else
+            if originalCF then
+                hrp.CFrame = hrp.CFrame:Lerp(originalCF, 0.5)
+                originalCF = nil
+            end
+        end
+    end)
+end
+
+local function stopBugMove()
+    CFG.BugMove = false
+    if bugConn then bugConn:Disconnect() bugConn = nil end
+    originalCF = nil
 end
 
 -- ===== ESP =====
@@ -150,36 +197,30 @@ local espConn, espFolder
 local function createESP(plr)
     if plr == LP then return end
     if not plr.Character or not plr.Character:FindFirstChild("HumanoidRootPart") then return end
-    local hrp = plr.Character.HumanoidRootPart
-
     local hl = Instance.new("Highlight")
-    hl.Name = "TB_ESP"
     hl.Adornee = plr.Character
     hl.FillColor = Color3.fromRGB(255, 60, 60)
     hl.FillTransparency = 0.7
     hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-    hl.OutlineTransparency = 0
     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     hl.Parent = espFolder
 
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name = "TB_Name"
-    billboard.Size = UDim2.new(0, 80, 0, 22)
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.AlwaysOnTop = true
-    billboard.Adornee = hrp
-    billboard.Parent = espFolder
+    local bb = Instance.new("BillboardGui")
+    bb.Size = UDim2.new(0, 80, 0, 22)
+    bb.StudsOffset = Vector3.new(0, 3, 0)
+    bb.AlwaysOnTop = true
+    bb.Adornee = plr.Character.HumanoidRootPart
+    bb.Parent = espFolder
 
-    local nameLabel = Instance.new("TextLabel")
-    nameLabel.Size = UDim2.new(1, 0, 1, 0)
-    nameLabel.BackgroundTransparency = 1
-    nameLabel.Text = plr.Name
-    nameLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
-    nameLabel.TextStrokeTransparency = 0
-    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    nameLabel.Font = Enum.Font.GothamBold
-    nameLabel.TextSize = 12
-    nameLabel.Parent = billboard
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = plr.Name
+    lbl.TextColor3 = Color3.fromRGB(255, 80, 80)
+    lbl.TextStrokeTransparency = 0
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 12
+    lbl.Parent = bb
 end
 
 local function applyESP(on)
@@ -187,11 +228,9 @@ local function applyESP(on)
     if on then
         if espFolder then espFolder:Destroy() end
         espFolder = Instance.new("Folder")
-        espFolder.Name = "TB_ESP_Folder"
+        espFolder.Name = "TB_ESP"
         espFolder.Parent = Workspace
-
         for _, plr in ipairs(Players:GetPlayers()) do createESP(plr) end
-
         if espConn then espConn:Disconnect() end
         espConn = Players.PlayerAdded:Connect(function(plr)
             plr.CharacterAdded:Connect(function()
@@ -199,152 +238,28 @@ local function applyESP(on)
                 if CFG.ESP then createESP(plr) end
             end)
         end)
-        for _, plr in ipairs(Players:GetPlayers()) do
-            plr.CharacterAdded:Connect(function()
-                task.wait(0.5)
-                if CFG.ESP then createESP(plr) end
-            end)
-        end
     else
         if espFolder then espFolder:Destroy() espFolder = nil end
         if espConn then espConn:Disconnect() espConn = nil end
     end
 end
 
--- ===== MOVIMENTOS =====
-local bugMoveConn, moveOrigin, moveT, playbackConn, recordConn
-
-local function getHRP()
-    local char = LP.Character
-    return char and char:FindFirstChild("HumanoidRootPart")
-end
-
-local function startBugMove()
-    if CFG.BugMove then return end
-    CFG.BugMove = true
-    local hrp = getHRP()
-    if not hrp then CFG.BugMove = false return end
-    moveOrigin = hrp.CFrame
-    moveT = 0
-
-    bugMoveConn = RunService.Heartbeat:Connect(function(dt)
-        if not CFG.BugMove then return end
-        local h = getHRP()
-        if not h then return end
-
-        moveT = moveT + dt
-        local mode = CFG.MoveMode or "Ir e Voltar"
-        local speed = CFG.BugSpeed or 3
-        local dist = CFG.BugDistance or 4
-        local smooth = CFG.SmoothFactor or 0.15
-        local offset = Vector3.zero
-
-        if mode == "Ir e Voltar" then
-            offset = Vector3.new(0, 0, -dist * math.sin(moveT * speed))
-        elseif mode == "Zigue-Zague" then
-            local s = math.sin(moveT * speed)
-            local c = math.cos(moveT * speed * 0.5)
-            offset = Vector3.new(dist * s, 0, -dist * 0.5 * c)
-        elseif mode == "Círculo" then
-            local a = moveT * speed
-            offset = Vector3.new(math.cos(a) * dist, 0, math.sin(a) * dist)
-        elseif mode == "Teleporte" then
-            local s = math.sin(moveT * speed * 2)
-            offset = Vector3.new(0, 0, -dist * 0.5 * (s > 0 and 1 or 0))
-        elseif mode == "Loop Aéreo" then
-            local s = math.sin(moveT * speed)
-            offset = Vector3.new(0, dist * s * 0.5, -dist * s)
-        end
-
-        -- 🔑 Lerp suaviza o movimento (anti-detecção)
-        local targetCF = moveOrigin * CFrame.new(offset)
-        h.CFrame = h.CFrame:Lerp(targetCF, smooth)
-        h.Velocity = Vector3.zero
-    end)
-end
-
-local function stopBugMove()
-    CFG.BugMove = false
-    if bugMoveConn then bugMoveConn:Disconnect() bugMoveConn = nil end
-end
-
--- ===== RECORD / PLAYBACK =====
-local function startRecording()
-    if CFG.Playing then return end
-    TB.recordBuffer = {}
-    local recordStart = tick()
-    CFG.Recording = true
-    if not getHRP() then CFG.Recording = false return end
-
-    recordConn = RunService.Heartbeat:Connect(function()
-        if not CFG.Recording then return end
-        local now = tick()
-        if now - recordStart > TB.MAX_RECORD_TIME then
-            CFG.Recording = false
-            if recordConn then recordConn:Disconnect() recordConn = nil end
-            return
-        end
-        local h = getHRP()
-        if h then
-            table.insert(TB.recordBuffer, { t = now - recordStart, cf = h.CFrame })
-        end
-    end)
-end
-
-local function stopRecording()
-    CFG.Recording = false
-    if recordConn then recordConn:Disconnect() recordConn = nil end
-end
-
-local function startPlayback()
-    if #TB.recordBuffer == 0 then return end
-    CFG.Playing = true
-    if not getHRP() then CFG.Playing = false return end
-    local startT = tick()
-
-    playbackConn = RunService.Heartbeat:Connect(function()
-        if not CFG.Playing then return end
-        local h = getHRP()
-        if not h then return end
-        local elapsed = tick() - startT
-        if elapsed > TB.recordBuffer[#TB.recordBuffer].t then
-            startT = tick()
-            elapsed = 0
-        end
-        for i = #TB.recordBuffer, 1, -1 do
-            if TB.recordBuffer[i].t <= elapsed then
-                h.CFrame = h.CFrame:Lerp(TB.recordBuffer[i].cf, 0.3)
-                h.Velocity = Vector3.zero
-                break
-            end
-        end
-    end)
-end
-
-local function stopPlayback()
-    CFG.Playing = false
-    if playbackConn then playbackConn:Disconnect() playbackConn = nil end
-end
-
 -- ===== TAB VISUAL =====
 local VisualTab = Window:CreateTab("Visual", 4483362458)
 
 VisualTab:CreateToggle({
-    Name = "Anti-Lag Máximo",
-    CurrentValue = false, Flag = "AntiLag",
+    Name = "Anti-Lag Máximo", CurrentValue = false, Flag = "AntiLag",
     Callback = function(v) applyAntiLag(v) end,
 })
 
 VisualTab:CreateToggle({
-    Name = "FPS Boost Extra",
-    CurrentValue = false, Flag = "FPSBoost",
+    Name = "FPS Boost Extra", CurrentValue = false, Flag = "FPSBoost",
     Callback = function(v) applyFPSBoost(v) end,
 })
 
 VisualTab:CreateToggle({
-    Name = "Tela Esticada",
-    CurrentValue = false, Flag = "Stretched",
-    Callback = function(v) applyStretched(v) end,
+    Name = "FOV (Tela Aberta)", CurrentValue = false, Flag = "FOVEnabled",
+    Callback = function(v) applyFOV(v) end,
 })
 
 VisualTab:CreateSlider({
@@ -352,87 +267,49 @@ VisualTab:CreateSlider({
     CurrentValue = 120, Flag = "FOV",
     Callback = function(v)
         CFG.FOV = v
-        if CFG.Stretched then workspace.CurrentCamera.FieldOfView = v end
+        if CFG.FOVEnabled then workspace.CurrentCamera.FieldOfView = v end
+    end,
+})
+
+VisualTab:CreateDropdown({
+    Name = "Skybox",
+    Options = {"Nenhum", "Purple", "Night", "Dragon"},
+    CurrentOption = {"Nenhum"}, Flag = "Skybox",
+    Callback = function(opt)
+        setSkybox(type(opt) == "table" and opt[1] or opt)
     end,
 })
 
 -- ===== TAB MOVIMENTO =====
 local MoveTab = Window:CreateTab("Movimento", 4483362458)
 
-MoveTab:CreateDropdown({
-    Name = "Modo de Movimento",
-    Options = {"Ir e Voltar", "Zigue-Zague", "Círculo", "Teleporte", "Loop Aéreo"},
-    CurrentOption = {"Ir e Voltar"}, Flag = "MoveMode",
-    Callback = function(opt)
-        CFG.MoveMode = type(opt) == "table" and opt[1] or opt
-        local h = getHRP()
-        if h then moveOrigin = h.CFrame end
-    end,
-})
-
-MoveTab:CreateSlider({
-    Name = "Velocidade", Range = {1, 10}, Increment = 1, Suffix = "x",
-    CurrentValue = 3, Flag = "BugSpeed",
-    Callback = function(v) CFG.BugSpeed = v end,
-})
-
-MoveTab:CreateSlider({
-    Name = "Distância", Range = {1, 10}, Increment = 1, Suffix = "studs",
-    CurrentValue = 4, Flag = "BugDistance",
-    Callback = function(v) CFG.BugDistance = v end,
-})
-
-MoveTab:CreateSlider({
-    Name = "Suavidade (Lerp)", Range = {5, 50}, Increment = 1, Suffix = "%",
-    CurrentValue = 15, Flag = "SmoothFactor",
-    Callback = function(v) CFG.SmoothFactor = v / 100 end,
-})
-
 MoveTab:CreateToggle({
-    Name = "Movimento Bugado",
-    CurrentValue = false, Flag = "BugMove",
+    Name = "Movimento Bugado (Pulo/Escalada)", CurrentValue = false, Flag = "BugMove",
     Callback = function(v)
         if v then startBugMove() else stopBugMove() end
     end,
 })
 
-MoveTab:CreateSection("Gravação")
-
-MoveTab:CreateToggle({
-    Name = "Gravar Movimento",
-    CurrentValue = false, Flag = "Recording",
-    Callback = function(v)
-        if v then startRecording() else stopRecording() end
-    end,
-})
-
-MoveTab:CreateToggle({
-    Name = "Repetir Movimento",
-    CurrentValue = false, Flag = "Playing",
-    Callback = function(v)
-        if v then startPlayback() else stopPlayback() end
-    end,
+MoveTab:CreateSlider({
+    Name = "Força do Bug", Range = {1, 8}, Increment = 1, Suffix = "x",
+    CurrentValue = 3, Flag = "BugDistance",
+    Callback = function(v) CFG.BugDistance = v end,
 })
 
 -- ===== TAB ESP =====
 local ESPTab = Window:CreateTab("ESP", 4483362458)
-
 ESPTab:CreateToggle({
-    Name = "ESP Players",
-    CurrentValue = false, Flag = "ESP",
+    Name = "ESP Players", CurrentValue = false, Flag = "ESP",
     Callback = function(v) applyESP(v) end,
 })
 
 -- ===== TAB EXTRAS =====
 local ExtraTab = Window:CreateTab("Extras", 4483362458)
-
 ExtraTab:CreateButton({
     Name = "Resetar Tudo",
     Callback = function()
-        stopBugMove(); stopRecording(); stopPlayback()
-        applyAntiLag(false); applyFPSBoost(false)
-        applyStretched(false); applyESP(false)
-        TB.recordBuffer = {}
+        stopBugMove(); applyESP(false); applyAntiLag(false)
+        applyFPSBoost(false); applyFOV(false); setSkybox("Nenhum")
         print("[TB] Reset completo")
     end,
 })
@@ -445,10 +322,5 @@ ExtraTab:CreateButton({
     end,
 })
 
-Rayfield:Notify({
-    Title = "TB Duels v1.1",
-    Content = "Script carregado!",
-    Duration = 3,
-})
-
-print("✅ TB Duels v1.1 carregado")
+Rayfield:Notify({ Title = "TB Duels v1.2", Content = "Script carregado!", Duration = 3 })
+print("✅ TB Duels v1.2 carregado")
