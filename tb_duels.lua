@@ -1,14 +1,14 @@
 -- ============================================
--- TB DUELS MOBILE - v2.0
--- Câmera Reta + ESP Bots + Ícone Corrigido
+-- TD XITERS - v2.4
+-- Auto Pass + ESP + Hitbox + Jump + Strafe + Visual
 -- ============================================
 
-if _G.TB_LOADED then return end
-_G.TB_LOADED = true
+if _G.TDX_LOADED then return end
+_G.TDX_LOADED = true
 
 -- ===== LOADING SCREEN =====
 local loadingGui = Instance.new("ScreenGui")
-loadingGui.Name = "TB_Loading"
+loadingGui.Name = "TDX_Loading"
 loadingGui.ResetOnSpawn = false
 loadingGui.IgnoreGuiInset = true
 loadingGui.DisplayOrder = 10
@@ -16,7 +16,7 @@ loadingGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerG
 
 local bg = Instance.new("Frame")
 bg.Size = UDim2.new(1, 0, 1, 0)
-bg.BackgroundColor3 = Color3.fromRGB(10, 10, 14)
+bg.BackgroundColor3 = Color3.fromRGB(8, 8, 12)
 bg.BorderSizePixel = 0
 bg.Parent = loadingGui
 
@@ -24,17 +24,17 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 60)
 title.Position = UDim2.new(0, 0, 0.4, -80)
 title.BackgroundTransparency = 1
-title.Text = "💣 TB DUELS"
-title.TextColor3 = Color3.fromRGB(255, 80, 80)
+title.Text = "⚡ TD XITERS"
+title.TextColor3 = Color3.fromRGB(255, 50, 50)
 title.Font = Enum.Font.GothamBold
-title.TextSize = 32
+title.TextSize = 36
 title.Parent = bg
 
 local sub = Instance.new("TextLabel")
 sub.Size = UDim2.new(1, 0, 0, 30)
 sub.Position = UDim2.new(0, 0, 0.4, -20)
 sub.BackgroundTransparency = 1
-sub.Text = "Carregando script..."
+sub.Text = "Carregando..."
 sub.TextColor3 = Color3.fromRGB(200, 200, 220)
 sub.Font = Enum.Font.Gotham
 sub.TextSize = 16
@@ -53,7 +53,7 @@ barCorner.Parent = barBg
 
 local barFill = Instance.new("Frame")
 barFill.Size = UDim2.new(0, 0, 1, 0)
-barFill.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+barFill.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
 barFill.BorderSizePixel = 0
 barFill.Parent = barBg
 
@@ -100,27 +100,28 @@ local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
 local LP = Players.LocalPlayer
 
-_G.TB = _G.TB or {}
-local TB = _G.TB
+_G.TDX = _G.TDX or {}
+local TDX = _G.TDX
 
-TB.CFG = {
+TDX.CFG = {
     AntiLag = false, FPSBoost = false,
     FOVEnabled = false, FOV = 120,
-    ESP = false, Skybox = "Nenhum",
-    CamShake = false, CamShakeSpeed = 8,
-    WallhopTurn = false, StrafeTurn = false,
+    ESP = false, ESPPlayers = false, Skybox = "Nenhum",
+    CamShake = false, CamShakeSpeed = 8, CamShakeAmp = 15,
+    StrafeTurn = false,
     JumpPowerEnabled = false, JumpPowerValue = 75,
-    CamShakeAmp = 15,
+    HitboxEnabled = false, HitboxSize = 10,
+    AutoPass = false, AutoPassDistance = 15,
+    Fullbright = false,
 }
-TB.ORIGINAL_FOV = workspace.CurrentCamera.FieldOfView
-local CFG = TB.CFG
+TDX.ORIGINAL_FOV = workspace.CurrentCamera.FieldOfView
+local CFG = TDX.CFG
 
--- ÍCONE: Vou usar um ID de ícone genérico que funciona (seta vermelha)
 local Window = Rayfield:CreateWindow({
-    Name = "TB Duels Mobile",
-    LoadingTitle = "TB Duels",
-    LoadingSubtitle = "v2.0",
-    Icon = 4483362458,  -- ID genérico que funciona
+    Name = "TD XITERS",
+    LoadingTitle = "TD Xiters",
+    LoadingSubtitle = "v2.4 • Timebomb Duels",
+    Icon = 4483362458,
     ConfigurationSaving = { Enabled = false },
     KeySystem = false,
 })
@@ -190,12 +191,26 @@ local function applyFPSBoost(on)
     end
 end
 
+-- ===== FULLBRIGHT =====
+local function applyFullbright(on)
+    CFG.Fullbright = on
+    if on then
+        Lighting.Brightness = 3
+        Lighting.ClockTime = 14
+        Lighting.FogEnd = 100000
+        Lighting.Ambient = Color3.fromRGB(180, 180, 180)
+    else
+        Lighting.Brightness = 2
+        Lighting.Ambient = Color3.fromRGB(70, 70, 70)
+    end
+end
+
 -- ===== FOV =====
 local function applyFOV(on)
     CFG.FOVEnabled = on
     local cam = workspace.CurrentCamera
     if on then cam.FieldOfView = CFG.FOV
-    else cam.FieldOfView = TB.ORIGINAL_FOV end
+    else cam.FieldOfView = TDX.ORIGINAL_FOV end
 end
 
 -- ===== SKYBOX =====
@@ -235,62 +250,110 @@ local function setSkybox(name)
     sky.Parent = Lighting
 end
 
--- ===== ESP SÓ PARA BOTS =====
-local espFolder, espConn, espUpdateConn
+-- ===== AUTO PASS BOMB =====
+local autoPassConn = nil
 
--- Função para verificar se um personagem é de um player real
+local function startAutoPass()
+    if autoPassConn then return end
+    CFG.AutoPass = true
+    autoPassConn = RunService.Heartbeat:Connect(function()
+        if not CFG.AutoPass then return end
+        local char = LP.Character
+        if not char then return end
+        local bomb = char:FindFirstChildOfClass("Tool")
+        if not bomb then return end
+        local name = string.lower(bomb.Name)
+        if not (string.find(name, "bomb") or string.find(name, "time") or string.find(name, "pass")) then return end
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LP and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                local dist = (char.HumanoidRootPart.Position - plr.Character.HumanoidRootPart.Position).Magnitude
+                if dist < CFG.AutoPassDistance then
+                    bomb:Activate()
+                    break
+                end
+            end
+        end
+    end)
+end
+
+local function stopAutoPass()
+    CFG.AutoPass = false
+    if autoPassConn then autoPassConn:Disconnect() autoPassConn = nil end
+end
+
+-- ===== HITBOX EXPANDER =====
+local hitboxConn = nil
+
+local function startHitbox()
+    if hitboxConn then return end
+    CFG.HitboxEnabled = true
+    hitboxConn = RunService.Heartbeat:Connect(function()
+        if not CFG.HitboxEnabled then return end
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LP and plr.Character then
+                local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    hrp.Size = Vector3.new(CFG.HitboxSize, CFG.HitboxSize, CFG.HitboxSize)
+                    hrp.CanCollide = false
+                end
+            end
+        end
+    end)
+end
+
+local function stopHitbox()
+    CFG.HitboxEnabled = false
+    if hitboxConn then hitboxConn:Disconnect() hitboxConn = nil end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP and plr.Character then
+            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.Size = Vector3.new(2, 2, 1) end
+        end
+    end
+end
+
+-- ===== ESP BOTS + PLAYERS =====
+local espFolder, espConn
+
 local function isRealPlayer(character)
     for _, plr in ipairs(Players:GetPlayers()) do
-        if plr.Character == character then
-            return true
-        end
+        if plr.Character == character then return true end
     end
     return false
 end
 
-local function createESP(character)
+local function createESP(character, isBot)
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
-    -- Só aplica ESP se NÃO for player real (ou seja, é bot)
-    if isRealPlayer(character) then return end
-
     local hrp = character.HumanoidRootPart
+    local color = isBot and Color3.fromRGB(255, 100, 0) or Color3.fromRGB(255, 50, 50)
+    local label = isBot and "BOT" or (character.Name or "Player")
 
     local box = Instance.new("BoxHandleAdornment")
-    box.Name = "TB_ESP_Bot"
+    box.Name = "TDX_ESP_Box"
     box.Adornee = hrp
     box.AlwaysOnTop = true
     box.Size = Vector3.new(4, 6, 4)
     box.Transparency = 0.5
-    box.Color3 = Color3.fromRGB(255, 100, 0)  -- Laranja (diferente dos players)
+    box.Color3 = color
     box.Parent = espFolder
 
     local bb = Instance.new("BillboardGui")
-    bb.Name = "TB_ESP_BotName"
+    bb.Name = "TDX_ESP_Name"
     bb.Size = UDim2.new(0, 100, 0, 24)
     bb.StudsOffset = Vector3.new(0, 3.5, 0)
     bb.AlwaysOnTop = true
     bb.Adornee = hrp
     bb.Parent = espFolder
 
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 1, 0)
-    label.BackgroundTransparency = 1
-    label.Text = "BOT"
-    label.TextColor3 = Color3.fromRGB(255, 150, 50)
-    label.TextStrokeTransparency = 0
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 14
-    label.Parent = bb
-end
-
-local function scanForBots()
-    if not CFG.ESP then return end
-    -- Percorre todos os personagens no Workspace
-    for _, obj in ipairs(Workspace:GetChildren()) do
-        if obj:IsA("Model") and obj:FindFirstChild("Humanoid") then
-            createESP(obj)
-        end
-    end
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, 0, 1, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = label
+    nameLabel.TextColor3 = color
+    nameLabel.TextStrokeTransparency = 0
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.TextSize = 14
+    nameLabel.Parent = bb
 end
 
 local function applyESP(on)
@@ -298,19 +361,31 @@ local function applyESP(on)
     if on then
         if espFolder then espFolder:Destroy() end
         espFolder = Instance.new("Folder")
-        espFolder.Name = "TB_ESP_Bots"
+        espFolder.Name = "TDX_ESP"
         espFolder.Parent = Workspace
 
-        -- Escaneia bots existentes
-        scanForBots()
+        for _, obj in ipairs(Workspace:GetChildren()) do
+            if obj:IsA("Model") and obj:FindFirstChild("Humanoid") then
+                if isRealPlayer(obj) then
+                    if CFG.ESPPlayers then createESP(obj, false) end
+                else
+                    createESP(obj, true)
+                end
+            end
+        end
 
-        -- Monitora novos bots que aparecem
         if espConn then espConn:Disconnect() end
         espConn = Workspace.DescendantAdded:Connect(function(d)
             if not CFG.ESP then return end
             if d:IsA("Model") and d:FindFirstChild("Humanoid") then
                 task.wait(0.5)
-                if CFG.ESP then createESP(d) end
+                if CFG.ESP then
+                    if isRealPlayer(d) then
+                        if CFG.ESPPlayers then createESP(d, false) end
+                    else
+                        createESP(d, true)
+                    end
+                end
             end
         end)
     else
@@ -319,15 +394,8 @@ local function applyESP(on)
     end
 end
 
--- ===== FUNÇÕES BASE =====
-local function getHRP()
-    local char = LP.Character
-    return char and char:FindFirstChild("HumanoidRootPart")
-end
-
 -- ===== JUMP POWER =====
-local jumpConn = nil
-local jumpOriginal = 50
+local jumpConn, jumpOriginal = nil, 50
 
 local function startJumpPower()
     if jumpConn then return end
@@ -338,7 +406,6 @@ local function startJumpPower()
         jumpOriginal = hum.JumpPower
         hum.JumpPower = CFG.JumpPowerValue
     end
-
     jumpConn = RunService.Heartbeat:Connect(function()
         if not CFG.JumpPowerEnabled then return end
         local c = LP.Character
@@ -358,23 +425,20 @@ local function stopJumpPower()
     if hum then hum.JumpPower = jumpOriginal end
 end
 
--- ===== CÂMERA TREMENDO (RETA - ESQUERDA/DIREITA) =====
-local camShakeConn = nil
-local shakeTimer = 0
+-- ===== CÂMERA TREMENDO =====
+local camShakeConn, shakeTimer = nil, 0
 
 local function startCamShake()
     if camShakeConn then return end
     CFG.CamShake = true
     shakeTimer = 0
-
     camShakeConn = RunService.RenderStepped:Connect(function(dt)
         if not CFG.CamShake then return end
         local cam = workspace.CurrentCamera
         if not cam then return end
         shakeTimer = shakeTimer + dt
-        -- Gira RETO (yaw) em vez de inclinar (roll)
         local yaw = math.sin(shakeTimer * CFG.CamShakeSpeed) * math.rad(CFG.CamShakeAmp)
-        cam.CFrame = cam.CFrame * CFrame.Angles(0, yaw, 0)  -- Y = yaw (reto)
+        cam.CFrame = cam.CFrame * CFrame.Angles(0, yaw, 0)
     end)
 end
 
@@ -383,46 +447,12 @@ local function stopCamShake()
     if camShakeConn then camShakeConn:Disconnect() camShakeConn = nil end
 end
 
--- ===== WALLHOP VIRAR =====
-local wallhopConn = nil
-local wallhopCooldown = false
-
-local function startWallhopTurn()
-    if wallhopConn then return end
-    CFG.WallhopTurn = true
-
-    wallhopConn = RunService.Heartbeat:Connect(function(dt)
-        if not CFG.WallhopTurn then return end
-        local char = LP.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hum or not hrp then return end
-
-        local state = hum:GetState()
-        if (state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall) and not wallhopCooldown then
-            wallhopCooldown = true
-            hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(180), 0)
-            task.wait(0.3)
-            wallhopCooldown = false
-        end
-    end)
-end
-
-local function stopWallhopTurn()
-    CFG.WallhopTurn = false
-    if wallhopConn then wallhopConn:Disconnect() wallhopConn = nil end
-    wallhopCooldown = false
-end
-
 -- ===== STRAFE VIRAR =====
-local strafeTurnConn = nil
-local strafeCooldown = false
+local strafeTurnConn, strafeCooldown = nil, false
 
 local function startStrafeTurn()
     if strafeTurnConn then return end
     CFG.StrafeTurn = true
-
     strafeTurnConn = RunService.Heartbeat:Connect(function(dt)
         if not CFG.StrafeTurn then return end
         local char = LP.Character
@@ -430,7 +460,6 @@ local function startStrafeTurn()
         local hum = char:FindFirstChildOfClass("Humanoid")
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hum or not hrp then return end
-
         local state = hum:GetState()
         if (state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall) and not strafeCooldown then
             if hum.MoveDirection.Magnitude > 0.1 then
@@ -449,6 +478,68 @@ local function stopStrafeTurn()
     strafeCooldown = false
 end
 
+-- ===== TAB COMBATE =====
+local CombatTab = Window:CreateTab("Combate", 4483362458)
+
+CombatTab:CreateSection("Bomba")
+
+CombatTab:CreateToggle({
+    Name = "Auto Pass Bomb", CurrentValue = false, Flag = "AutoPass",
+    Callback = function(v)
+        if v then startAutoPass() else stopAutoPass() end
+    end,
+})
+
+CombatTab:CreateSlider({
+    Name = "Distância do Auto Pass", Range = {5, 30}, Increment = 1, Suffix = "studs",
+    CurrentValue = 15, Flag = "AutoPassDistance",
+    Callback = function(v) CFG.AutoPassDistance = v end,
+})
+
+CombatTab:CreateSection("Hitbox")
+
+CombatTab:CreateToggle({
+    Name = "Hitbox Expander", CurrentValue = false, Flag = "HitboxEnabled",
+    Callback = function(v)
+        if v then startHitbox() else stopHitbox() end
+    end,
+})
+
+CombatTab:CreateSlider({
+    Name = "Tamanho da Hitbox", Range = {5, 30}, Increment = 1, Suffix = "x",
+    CurrentValue = 10, Flag = "HitboxSize",
+    Callback = function(v) CFG.HitboxSize = v end,
+})
+
+CombatTab:CreateSection("Movimento")
+
+CombatTab:CreateToggle({
+    Name = "Jump Power Boost", CurrentValue = false, Flag = "JumpPowerEnabled",
+    Callback = function(v)
+        if v then startJumpPower() else stopJumpPower() end
+    end,
+})
+
+CombatTab:CreateSlider({
+    Name = "Jump Power", Range = {50, 150}, Increment = 5, Suffix = "",
+    CurrentValue = 75, Flag = "JumpPowerValue",
+    Callback = function(v)
+        CFG.JumpPowerValue = v
+        if CFG.JumpPowerEnabled then
+            local char = LP.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.JumpPower = v end
+        end
+    end,
+})
+
+CombatTab:CreateToggle({
+    Name = "Strafe Virar (Pra Trás)", CurrentValue = false, Flag = "StrafeTurn",
+    Callback = function(v)
+        if v then startStrafeTurn() else stopStrafeTurn() end
+    end,
+})
+
 -- ===== TAB VISUAL =====
 local VisualTab = Window:CreateTab("Visual", 4483362458)
 
@@ -460,6 +551,11 @@ VisualTab:CreateToggle({
 VisualTab:CreateToggle({
     Name = "FPS Boost Extra", CurrentValue = false, Flag = "FPSBoost",
     Callback = function(v) applyFPSBoost(v) end,
+})
+
+VisualTab:CreateToggle({
+    Name = "Fullbright (Tudo Claro)", CurrentValue = false, Flag = "Fullbright",
+    Callback = function(v) applyFullbright(v) end,
 })
 
 VisualTab:CreateToggle({
@@ -504,63 +600,68 @@ VisualTab:CreateSlider({
     Callback = function(v) CFG.CamShakeAmp = v end,
 })
 
--- ===== TAB MOVIMENTO =====
-local MoveTab = Window:CreateTab("Movimento", 4483362458)
+-- ===== TAB ESP =====
+local ESPTab = Window:CreateTab("ESP", 4483362458)
 
-MoveTab:CreateSection("Pulo")
-
-MoveTab:CreateToggle({
-    Name = "Jump Power Boost", CurrentValue = false, Flag = "JumpPowerEnabled",
+ESPTab:CreateToggle({
+    Name = "ESP Bots", CurrentValue = false, Flag = "ESP",
     Callback = function(v)
-        if v then startJumpPower() else stopJumpPower() end
+        CFG.ESP = v
+        applyESP(v)
     end,
 })
 
-MoveTab:CreateSlider({
-    Name = "Jump Power", Range = {50, 200}, Increment = 5, Suffix = "",
-    CurrentValue = 75, Flag = "JumpPowerValue",
+ESPTab:CreateToggle({
+    Name = "ESP Players (além dos bots)", CurrentValue = false, Flag = "ESPPlayers",
     Callback = function(v)
-        CFG.JumpPowerValue = v
-        if CFG.JumpPowerEnabled then
-            local char = LP.Character
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if hum then hum.JumpPower = v end
+        CFG.ESPPlayers = v
+        if CFG.ESP then
+            if espFolder then espFolder:Destroy() end
+            espFolder = Instance.new("Folder")
+            espFolder.Name = "TDX_ESP"
+            espFolder.Parent = Workspace
+            for _, obj in ipairs(Workspace:GetChildren()) do
+                if obj:IsA("Model") and obj:FindFirstChild("Humanoid") then
+                    if isRealPlayer(obj) then
+                        if CFG.ESPPlayers then createESP(obj, false) end
+                    else
+                        createESP(obj, true)
+                    end
+                end
+            end
         end
     end,
 })
 
-MoveTab:CreateSection("Movimentação Bugada")
-
-MoveTab:CreateToggle({
-    Name = "Wallhop Virar (Lado Contrário)", CurrentValue = false, Flag = "WallhopTurn",
-    Callback = function(v)
-        if v then startWallhopTurn() else stopWallhopTurn() end
-    end,
-})
-
-MoveTab:CreateToggle({
-    Name = "Strafe Virar (Pra Trás)", CurrentValue = false, Flag = "StrafeTurn",
-    Callback = function(v)
-        if v then startStrafeTurn() else stopStrafeTurn() end
-    end,
-})
-
--- ===== TAB ESP =====
-local ESPTab = Window:CreateTab("ESP", 4483362458)
-ESPTab:CreateToggle({
-    Name = "ESP Bots (só bots)", CurrentValue = false, Flag = "ESP",
-    Callback = function(v) applyESP(v) end,
-})
-
 -- ===== TAB EXTRAS =====
 local ExtraTab = Window:CreateTab("Extras", 4483362458)
+
 ExtraTab:CreateButton({
     Name = "Resetar Tudo",
     Callback = function()
-        stopCamShake(); stopWallhopTurn(); stopStrafeTurn()
-        stopJumpPower(); applyESP(false); applyAntiLag(false)
-        applyFPSBoost(false); applyFOV(false); setSkybox("Nenhum")
-        print("[TB] Reset completo")
+        stopCamShake(); stopStrafeTurn(); stopJumpPower(); stopHitbox()
+        stopAutoPass()
+        applyESP(false); applyAntiLag(false); applyFPSBoost(false)
+        applyFOV(false); applyFullbright(false); setSkybox("Nenhum")
+        print("[TDX] Reset completo")
+    end,
+})
+
+ExtraTab:CreateButton({
+    Name = "Ressuscitar (Respawn)",
+    Callback = function()
+        local char = LP.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.Health = 0 end
+        end
+    end,
+})
+
+ExtraTab:CreateButton({
+    Name = "Rejoin Servidor",
+    Callback = function()
+        game:GetService("TeleportService"):Teleport(game.PlaceId, LP)
     end,
 })
 
@@ -568,9 +669,14 @@ ExtraTab:CreateButton({
     Name = "Destruir Interface",
     Callback = function()
         Rayfield:Destroy()
-        _G.TB_LOADED = false
+        _G.TDX_LOADED = false
     end,
 })
 
-Rayfield:Notify({ Title = "TB Duels v2.0", Content = "Script carregado!", Duration = 3 })
-print("✅ TB Duels v2.0 carregado")
+Rayfield:Notify({
+    Title = "TD XITERS v2.4",
+    Content = "Script carregado!",
+    Duration = 4,
+})
+
+print("✅ TD XITERS v2.4 carregado")
