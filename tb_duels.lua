@@ -1,6 +1,6 @@
 -- ============================================
--- TB DUELS MOBILE - v1.5
--- Skybox + ESP + Movimento + Dragão 2D + Loading
+-- TB DUELS MOBILE - v1.8
+-- Câmera Tremendo + Wallhop Virar + Strafe Virar + Jump Power
 -- ============================================
 
 if _G.TB_LOADED then return end
@@ -105,17 +105,21 @@ local TB = _G.TB
 TB.CFG = {
     AntiLag = false, FPSBoost = false,
     FOVEnabled = false, FOV = 120,
-    ESP = false, BugMove = false,
-    BugDistance = 3, Skybox = "Nenhum",
-    Dragon = false,
+    ESP = false, Skybox = "Nenhum",
+    CamShake = false, CamShakeSpeed = 8,
+    WallhopTurn = false, StrafeTurn = false,
+    JumpPowerEnabled = false, JumpPowerValue = 75,
+    CamShakeAmp = 15,
 }
 TB.ORIGINAL_FOV = workspace.CurrentCamera.FieldOfView
+TB.ORIGINAL_JUMP = 50
 local CFG = TB.CFG
 
 local Window = Rayfield:CreateWindow({
     Name = "TB Duels Mobile",
     LoadingTitle = "TB Duels",
-    LoadingSubtitle = "v1.5",
+    LoadingSubtitle = "v1.8",
+    Icon = 934345192,  -- Ícone do Sharingan (Itachi Mangekyo) [citation:27][citation:31]
     ConfigurationSaving = { Enabled = false },
     KeySystem = false,
 })
@@ -143,7 +147,6 @@ local function applyAntiLag(on)
             end)
         end
         settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-        settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
     else
         settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
         Lighting.GlobalShadows = true
@@ -231,32 +234,8 @@ local function setSkybox(name)
     sky.Parent = Lighting
 end
 
--- ===== DRAGÃO 2D =====
-local dragonGui = Instance.new("ScreenGui")
-dragonGui.Name = "TB_Dragon"
-dragonGui.ResetOnSpawn = false
-dragonGui.IgnoreGuiInset = true
-dragonGui.DisplayOrder = 0
-dragonGui.Parent = LP:WaitForChild("PlayerGui")
-
-local dragonImg = Instance.new("ImageLabel")
-dragonImg.Size = UDim2.new(1, 0, 1, 0)
-dragonImg.BackgroundTransparency = 1
-dragonImg.Image = "rbxassetid://136931266"
-dragonImg.ImageTransparency = 1
-dragonImg.ScaleType = Enum.ScaleType.Fit
-dragonImg.ZIndex = 0
-dragonImg.Parent = dragonGui
-
-local function toggleDragon(on)
-    CFG.Dragon = on
-    dragonImg.ImageTransparency = on and 0.3 or 1
-end
-
 -- ===== ESP =====
-local espFolder = nil
-local espConn = nil
-local espUpdateConn = nil
+local espFolder, espConn, espUpdateConn
 
 local function createESP(plr)
     if plr == LP then return end
@@ -267,7 +246,6 @@ local function createESP(plr)
     box.Name = "TB_ESP_Box"
     box.Adornee = hrp
     box.AlwaysOnTop = true
-    box.ZIndex = 5
     box.Size = Vector3.new(4, 6, 4)
     box.Transparency = 0.5
     box.Color3 = Color3.fromRGB(255, 60, 60)
@@ -287,7 +265,6 @@ local function createESP(plr)
     label.Text = plr.Name
     label.TextColor3 = Color3.fromRGB(255, 80, 80)
     label.TextStrokeTransparency = 0
-    label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     label.Font = Enum.Font.GothamBold
     label.TextSize = 14
     label.Parent = bb
@@ -306,7 +283,6 @@ local function createESP(plr)
     distLabel.Text = "..."
     distLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
     distLabel.TextStrokeTransparency = 0
-    distLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     distLabel.Font = Enum.Font.Gotham
     distLabel.TextSize = 12
     distLabel.Parent = distBB
@@ -363,19 +339,81 @@ local function applyESP(on)
     end
 end
 
--- ===== MOVIMENTO BUGADO =====
-local bugConn = nil
-local bugTimer = 0
-local bugActive = false
+-- ===== FUNÇÕES BASE =====
+local function getHRP()
+    local char = LP.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
 
-local function startBugMove()
-    if bugConn then return end
-    CFG.BugMove = true
-    bugTimer = 0
-    bugActive = false
+-- ===== JUMP POWER =====
+local jumpConn = nil
+local jumpOriginal = 50
 
-    bugConn = RunService.Heartbeat:Connect(function(dt)
-        if not CFG.BugMove then return end
+local function startJumpPower()
+    if jumpConn then return end
+    CFG.JumpPowerEnabled = true
+    local char = LP.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        jumpOriginal = hum.JumpPower
+        hum.JumpPower = CFG.JumpPowerValue
+    end
+
+    jumpConn = RunService.Heartbeat:Connect(function()
+        if not CFG.JumpPowerEnabled then return end
+        local c = LP.Character
+        if not c then return end
+        local h = c:FindFirstChildOfClass("Humanoid")
+        if h and h.JumpPower ~= CFG.JumpPowerValue then
+            h.JumpPower = CFG.JumpPowerValue
+        end
+    end)
+end
+
+local function stopJumpPower()
+    CFG.JumpPowerEnabled = false
+    if jumpConn then jumpConn:Disconnect() jumpConn = nil end
+    local char = LP.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.JumpPower = jumpOriginal end
+end
+
+-- ===== CÂMERA TREMENDO (ESQUERDA/DIREITA) =====
+local camShakeConn = nil
+local shakeTimer = 0
+
+local function startCamShake()
+    if camShakeConn then return end
+    CFG.CamShake = true
+    shakeTimer = 0
+
+    camShakeConn = RunService.RenderStepped:Connect(function(dt)
+        if not CFG.CamShake then return end
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+
+        shakeTimer = shakeTimer + dt
+        -- Tremor lateral (roll) alternando rápido
+        local roll = math.sin(shakeTimer * CFG.CamShakeSpeed) * math.rad(CFG.CamShakeAmp)
+        cam.CFrame = cam.CFrame * CFrame.Angles(0, 0, roll)
+    end)
+end
+
+local function stopCamShake()
+    CFG.CamShake = false
+    if camShakeConn then camShakeConn:Disconnect() camShakeConn = nil end
+end
+
+-- ===== WALLHOP VIRAR (PULAR E VIRAR PRO LADO CONTRÁRIO) =====
+local wallhopConn = nil
+local wallhopCooldown = false
+
+local function startWallhopTurn()
+    if wallhopConn then return end
+    CFG.WallhopTurn = true
+
+    wallhopConn = RunService.Heartbeat:Connect(function(dt)
+        if not CFG.WallhopTurn then return end
         local char = LP.Character
         if not char then return end
         local hum = char:FindFirstChildOfClass("Humanoid")
@@ -383,33 +421,56 @@ local function startBugMove()
         if not hum or not hrp then return end
 
         local state = hum:GetState()
-        if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Climbing then
-            bugTimer = bugTimer + dt
-            if not bugActive and bugTimer > 0.1 then
-                bugActive = true
-                bugTimer = 0
-                local fwd = hrp.CFrame.LookVector
-                local dist = CFG.BugDistance * 0.15
-                hrp.CFrame = hrp.CFrame + fwd * dist
-                task.delay(0.05, function()
-                    if hrp and hrp.Parent then
-                        hrp.CFrame = hrp.CFrame - fwd * dist
-                    end
-                    bugActive = false
-                end)
-            end
-        else
-            bugTimer = 0
-            bugActive = false
+        if (state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall) and not wallhopCooldown then
+            wallhopCooldown = true
+            -- Gira 180° no eixo Y (vira pro lado contrário)
+            hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(180), 0)
+            task.wait(0.3)  -- Cooldown pra não virar infinitamente
+            wallhopCooldown = false
         end
     end)
 end
 
-local function stopBugMove()
-    CFG.BugMove = false
-    if bugConn then bugConn:Disconnect() bugConn = nil end
-    bugTimer = 0
-    bugActive = false
+local function stopWallhopTurn()
+    CFG.WallhopTurn = false
+    if wallhopConn then wallhopConn:Disconnect() wallhopConn = nil end
+    wallhopCooldown = false
+end
+
+-- ===== STRAFE VIRAR (PULAR E VIRAR PRA TRÁS) =====
+local strafeTurnConn = nil
+local strafeCooldown = false
+
+local function startStrafeTurn()
+    if strafeTurnConn then return end
+    CFG.StrafeTurn = true
+
+    strafeTurnConn = RunService.Heartbeat:Connect(function(dt)
+        if not CFG.StrafeTurn then return end
+        local char = LP.Character
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hum or not hrp then return end
+
+        local state = hum:GetState()
+        -- Só age quando você tá no ar E se movendo
+        if (state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall) and not strafeCooldown then
+            if hum.MoveDirection.Magnitude > 0.1 then
+                strafeCooldown = true
+                -- Gira 180° (vira pra trás)
+                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(180), 0)
+                task.wait(0.4)
+                strafeCooldown = false
+            end
+        end
+    end)
+end
+
+local function stopStrafeTurn()
+    CFG.StrafeTurn = false
+    if strafeTurnConn then strafeTurnConn:Disconnect() strafeTurnConn = nil end
+    strafeCooldown = false
 end
 
 -- ===== TAB VISUAL =====
@@ -446,25 +507,66 @@ VisualTab:CreateDropdown({
     Callback = function(opt) setSkybox(type(opt) == "table" and opt[1] or opt) end,
 })
 
+VisualTab:CreateSection("Câmera")
+
 VisualTab:CreateToggle({
-    Name = "Dragão 2D no Céu", CurrentValue = false, Flag = "Dragon",
-    Callback = function(v) toggleDragon(v) end,
+    Name = "Câmera Tremendo (L/R)", CurrentValue = false, Flag = "CamShake",
+    Callback = function(v)
+        if v then startCamShake() else stopCamShake() end
+    end,
+})
+
+VisualTab:CreateSlider({
+    Name = "Velocidade do Tremor", Range = {1, 20}, Increment = 1, Suffix = "x",
+    CurrentValue = 8, Flag = "CamShakeSpeed",
+    Callback = function(v) CFG.CamShakeSpeed = v end,
+})
+
+VisualTab:CreateSlider({
+    Name = "Intensidade do Tremor", Range = {5, 45}, Increment = 1, Suffix = "°",
+    CurrentValue = 15, Flag = "CamShakeAmp",
+    Callback = function(v) CFG.CamShakeAmp = v end,
 })
 
 -- ===== TAB MOVIMENTO =====
 local MoveTab = Window:CreateTab("Movimento", 4483362458)
 
+MoveTab:CreateSection("Pulo")
+
 MoveTab:CreateToggle({
-    Name = "Movimento Bugado (Pulo/Escalada)", CurrentValue = false, Flag = "BugMove",
+    Name = "Jump Power Boost", CurrentValue = false, Flag = "JumpPowerEnabled",
     Callback = function(v)
-        if v then startBugMove() else stopBugMove() end
+        if v then startJumpPower() else stopJumpPower() end
     end,
 })
 
 MoveTab:CreateSlider({
-    Name = "Força do Bug", Range = {1, 8}, Increment = 1, Suffix = "x",
-    CurrentValue = 3, Flag = "BugDistance",
-    Callback = function(v) CFG.BugDistance = v end,
+    Name = "Jump Power", Range = {50, 200}, Increment = 5, Suffix = "",
+    CurrentValue = 75, Flag = "JumpPowerValue",
+    Callback = function(v)
+        CFG.JumpPowerValue = v
+        if CFG.JumpPowerEnabled then
+            local char = LP.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.JumpPower = v end
+        end
+    end,
+})
+
+MoveTab:CreateSection("Movimentação Bugada")
+
+MoveTab:CreateToggle({
+    Name = "Wallhop Virar (Lado Contrário)", CurrentValue = false, Flag = "WallhopTurn",
+    Callback = function(v)
+        if v then startWallhopTurn() else stopWallhopTurn() end
+    end,
+})
+
+MoveTab:CreateToggle({
+    Name = "Strafe Virar (Pra Trás)", CurrentValue = false, Flag = "StrafeTurn",
+    Callback = function(v)
+        if v then startStrafeTurn() else stopStrafeTurn() end
+    end,
 })
 
 -- ===== TAB ESP =====
@@ -479,9 +581,9 @@ local ExtraTab = Window:CreateTab("Extras", 4483362458)
 ExtraTab:CreateButton({
     Name = "Resetar Tudo",
     Callback = function()
-        stopBugMove(); applyESP(false); applyAntiLag(false)
+        stopCamShake(); stopWallhopTurn(); stopStrafeTurn()
+        stopJumpPower(); applyESP(false); applyAntiLag(false)
         applyFPSBoost(false); applyFOV(false); setSkybox("Nenhum")
-        toggleDragon(false)
         print("[TB] Reset completo")
     end,
 })
@@ -494,5 +596,5 @@ ExtraTab:CreateButton({
     end,
 })
 
-Rayfield:Notify({ Title = "TB Duels v1.5", Content = "Script carregado!", Duration = 3 })
-print("✅ TB Duels v1.5 carregado")
+Rayfield:Notify({ Title = "TB Duels v1.8", Content = "Script carregado!", Duration = 3 })
+print("✅ TB Duels v1.8 carregado")
