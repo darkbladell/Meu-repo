@@ -1,11 +1,11 @@
 -- ============================================
 -- TB DUELS - LOADER COM FALLBACK
--- Tenta múltiplas fontes antes de desistir
 -- ============================================
 
 local FONTES = {
     "https://raw.githubusercontent.com/darkbladell/Meu-repo/main/tb_duels.lua",
 }
+
 local carregado = false
 local ultimoErro = nil
 
@@ -25,7 +25,7 @@ for i, url in ipairs(FONTES) do
             break
         else
             ultimoErro = err
-            warn("[TB] ❌ Erro ao executar fonte " .. i .. ": " .. tostring(err))
+            warn("[TB] ❌ Erro ao executar: " .. tostring(err))
         end
     else
         ultimoErro = resultado
@@ -34,10 +34,10 @@ for i, url in ipairs(FONTES) do
 end
 
 if not carregado then
-    warn("[TB] Todas as fontes falharam! Último erro: " .. tostring(ultimoErro))
+    warn("[TB] Todas as fontes falharam! Erro: " .. tostring(ultimoErro))
     game:GetService("StarterGui"):SetCore("SendNotification", {
         Title = "TB Duels",
-        Text = "Falha ao carregar script. Tente novamente.",
+        Text = "Falha ao carregar script.",
         Duration = 5,
     })
 end
