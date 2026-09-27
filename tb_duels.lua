@@ -1,11 +1,96 @@
 -- ============================================
--- TB DUELS MOBILE - v1.2
--- FOV + FPS Boost + Skybox + Movimento Bugado
+-- TB DUELS MOBILE - v1.5
+-- Skybox + ESP + Movimento + Dragão 2D + Loading
 -- ============================================
 
 if _G.TB_LOADED then return end
 _G.TB_LOADED = true
 
+-- ===== LOADING SCREEN =====
+local loadingGui = Instance.new("ScreenGui")
+loadingGui.Name = "TB_Loading"
+loadingGui.ResetOnSpawn = false
+loadingGui.IgnoreGuiInset = true
+loadingGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+
+local bg = Instance.new("Frame")
+bg.Size = UDim2.new(1, 0, 1, 0)
+bg.BackgroundColor3 = Color3.fromRGB(10, 10, 14)
+bg.BorderSizePixel = 0
+bg.Parent = loadingGui
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 60)
+title.Position = UDim2.new(0, 0, 0.4, -80)
+title.BackgroundTransparency = 1
+title.Text = "💣 TB DUELS"
+title.TextColor3 = Color3.fromRGB(255, 80, 80)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 32
+title.Parent = bg
+
+local sub = Instance.new("TextLabel")
+sub.Size = UDim2.new(1, 0, 0, 30)
+sub.Position = UDim2.new(0, 0, 0.4, -20)
+sub.BackgroundTransparency = 1
+sub.Text = "Carregando script..."
+sub.TextColor3 = Color3.fromRGB(200, 200, 220)
+sub.Font = Enum.Font.Gotham
+sub.TextSize = 16
+sub.Parent = bg
+
+local barBg = Instance.new("Frame")
+barBg.Size = UDim2.new(0, 300, 0, 8)
+barBg.Position = UDim2.new(0.5, -150, 0.5, 40)
+barBg.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+barBg.BorderSizePixel = 0
+barBg.Parent = bg
+
+local barCorner = Instance.new("UICorner")
+barCorner.CornerRadius = UDim.new(1, 0)
+barCorner.Parent = barBg
+
+local barFill = Instance.new("Frame")
+barFill.Size = UDim2.new(0, 0, 1, 0)
+barFill.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+barFill.BorderSizePixel = 0
+barFill.Parent = barBg
+
+local fillCorner = Instance.new("UICorner")
+fillCorner.CornerRadius = UDim.new(1, 0)
+fillCorner.Parent = barFill
+
+local pct = Instance.new("TextLabel")
+pct.Size = UDim2.new(1, 0, 0, 20)
+pct.Position = UDim2.new(0, 0, 0.5, 60)
+pct.BackgroundTransparency = 1
+pct.Text = "0%"
+pct.TextColor3 = Color3.fromRGB(255, 255, 255)
+pct.Font = Enum.Font.GothamBold
+pct.TextSize = 14
+pct.Parent = bg
+
+local steps = {
+    "Carregando interface...",
+    "Carregando Rayfield...",
+    "Preparando módulos...",
+    "Finalizando...",
+}
+
+task.spawn(function()
+    for i = 1, #steps do
+        sub.Text = steps[i]
+        for p = 0, 100, 5 do
+            barFill.Size = UDim2.new(p / 100, 0, 1, 0)
+            pct.Text = math.floor(((i - 1) * 25) + (p / 4)) .. "%"
+            task.wait(0.02)
+        end
+    end
+    task.wait(0.3)
+    loadingGui:Destroy()
+end)
+
+-- ===== CARREGA RAYFIELD =====
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Players = game:GetService("Players")
@@ -22,16 +107,15 @@ TB.CFG = {
     FOVEnabled = false, FOV = 120,
     ESP = false, BugMove = false,
     BugDistance = 3, Skybox = "Nenhum",
-    Recording = false, Playing = false,
+    Dragon = false,
 }
-TB.recordBuffer = {}
 TB.ORIGINAL_FOV = workspace.CurrentCamera.FieldOfView
 local CFG = TB.CFG
 
 local Window = Rayfield:CreateWindow({
     Name = "TB Duels Mobile",
-    LoadingTitle = "Carregando...",
-    LoadingSubtitle = "v1.2",
+    LoadingTitle = "TB Duels",
+    LoadingSubtitle = "v1.5",
     ConfigurationSaving = { Enabled = false },
     KeySystem = false,
 })
@@ -41,10 +125,9 @@ local function applyAntiLag(on)
     CFG.AntiLag = on
     if on then
         Lighting.GlobalShadows = false
-        Lighting.FogEnd = 1e6
         for _, v in ipairs(Lighting:GetChildren()) do
             pcall(function()
-                if v:IsA("PostEffect") or v:IsA("Atmosphere") or v:IsA("Sky") then
+                if v:IsA("PostEffect") or v:IsA("Atmosphere") then
                     v.Enabled = false
                 end
             end)
@@ -103,7 +186,7 @@ local function applyFPSBoost(on)
     end
 end
 
--- ===== FOV (simula tela esticada) =====
+-- ===== FOV =====
 local function applyFOV(on)
     CFG.FOVEnabled = on
     local cam = workspace.CurrentCamera
@@ -112,55 +195,186 @@ local function applyFOV(on)
 end
 
 -- ===== SKYBOX =====
+local SKYBOXES = {
+    Nenhum = nil,
+    Night = {
+        Bk = "rbxassetid://1233158420", Dn = "rbxassetid://1233158838",
+        Ft = "rbxassetid://1233157105", Lf = "rbxassetid://1233157640",
+        Rt = "rbxassetid://1233157995", Up = "rbxassetid://1233159158",
+    },
+    Purple = {
+        Bk = "rbxassetid://6021017254", Dn = "rbxassetid://6021016390",
+        Ft = "rbxassetid://6021015479", Lf = "rbxassetid://6021014807",
+        Rt = "rbxassetid://6021012347", Up = "rbxassetid://6021011228",
+    },
+    Dragon = {
+        Bk = "rbxassetid://14753804949", Dn = "rbxassetid://14753795573",
+        Ft = "rbxassetid://14753807625", Lf = "rbxassetid://14753797417",
+        Rt = "rbxassetid://14753799966", Up = "rbxassetid://14753810287",
+    },
+}
+
 local function setSkybox(name)
     CFG.Skybox = name
     for _, v in ipairs(Lighting:GetChildren()) do
         if v:IsA("Sky") then v:Destroy() end
     end
-    if name == "Nenhum" then return end
-
+    if name == "Nenhum" or not SKYBOXES[name] then return end
+    local data = SKYBOXES[name]
     local sky = Instance.new("Sky")
+    sky.SkyboxBk = data.Bk
+    sky.SkyboxDn = data.Dn
+    sky.SkyboxFt = data.Ft
+    sky.SkyboxLf = data.Lf
+    sky.SkyboxRt = data.Rt
+    sky.SkyboxUp = data.Up
     sky.Parent = Lighting
+end
 
-    if name == "Purple" then
-        sky.SkyboxBk = "rbxassetid://6021017254"
-        sky.SkyboxDn = "rbxassetid://6021016390"
-        sky.SkyboxFt = "rbxassetid://6021011228"
-        sky.SkyboxLf = "rbxassetid://6021011228"
-        sky.SkyboxRt = "rbxassetid://6021011228"
-        sky.SkyboxUp = "rbxassetid://6021011228"
-    elseif name == "Night" then
-        sky.SkyboxBk = "rbxassetid://6021017254"
-        sky.SkyboxDn = "rbxassetid://6021016390"
-        sky.SkyboxFt = "rbxassetid://6021011228"
-        sky.SkyboxLf = "rbxassetid://6021011228"
-        sky.SkyboxRt = "rbxassetid://6021011228"
-        sky.SkyboxUp = "rbxassetid://6021011228"
-        sky.StarCount = 5000
-    elseif name == "Dragon" then
-        -- IDs de exemplo (troque pelos corretos do catálogo)
-        sky.SkyboxBk = "rbxassetid://92767799"
-        sky.SkyboxDn = "rbxassetid://92767799"
-        sky.SkyboxFt = "rbxassetid://92767799"
-        sky.SkyboxLf = "rbxassetid://92767799"
-        sky.SkyboxRt = "rbxassetid://92767799"
-        sky.SkyboxUp = "rbxassetid://92767799"
+-- ===== DRAGÃO 2D =====
+local dragonGui = Instance.new("ScreenGui")
+dragonGui.Name = "TB_Dragon"
+dragonGui.ResetOnSpawn = false
+dragonGui.IgnoreGuiInset = true
+dragonGui.DisplayOrder = 0
+dragonGui.Parent = LP:WaitForChild("PlayerGui")
+
+local dragonImg = Instance.new("ImageLabel")
+dragonImg.Size = UDim2.new(1, 0, 1, 0)
+dragonImg.BackgroundTransparency = 1
+dragonImg.Image = "rbxassetid://136931266"
+dragonImg.ImageTransparency = 1
+dragonImg.ScaleType = Enum.ScaleType.Fit
+dragonImg.ZIndex = 0
+dragonImg.Parent = dragonGui
+
+local function toggleDragon(on)
+    CFG.Dragon = on
+    dragonImg.ImageTransparency = on and 0.3 or 1
+end
+
+-- ===== ESP =====
+local espFolder = nil
+local espConn = nil
+local espUpdateConn = nil
+
+local function createESP(plr)
+    if plr == LP then return end
+    if not plr.Character or not plr.Character:FindFirstChild("HumanoidRootPart") then return end
+    local hrp = plr.Character.HumanoidRootPart
+
+    local box = Instance.new("BoxHandleAdornment")
+    box.Name = "TB_ESP_Box"
+    box.Adornee = hrp
+    box.AlwaysOnTop = true
+    box.ZIndex = 5
+    box.Size = Vector3.new(4, 6, 4)
+    box.Transparency = 0.5
+    box.Color3 = Color3.fromRGB(255, 60, 60)
+    box.Parent = espFolder
+
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "TB_ESP_Name"
+    bb.Size = UDim2.new(0, 100, 0, 24)
+    bb.StudsOffset = Vector3.new(0, 3.5, 0)
+    bb.AlwaysOnTop = true
+    bb.Adornee = hrp
+    bb.Parent = espFolder
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = plr.Name
+    label.TextColor3 = Color3.fromRGB(255, 80, 80)
+    label.TextStrokeTransparency = 0
+    label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 14
+    label.Parent = bb
+
+    local distBB = Instance.new("BillboardGui")
+    distBB.Name = "TB_ESP_Dist"
+    distBB.Size = UDim2.new(0, 100, 0, 20)
+    distBB.StudsOffset = Vector3.new(0, 2.5, 0)
+    distBB.AlwaysOnTop = true
+    distBB.Adornee = hrp
+    distBB.Parent = espFolder
+
+    local distLabel = Instance.new("TextLabel")
+    distLabel.Size = UDim2.new(1, 0, 1, 0)
+    distLabel.BackgroundTransparency = 1
+    distLabel.Text = "..."
+    distLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
+    distLabel.TextStrokeTransparency = 0
+    distLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    distLabel.Font = Enum.Font.Gotham
+    distLabel.TextSize = 12
+    distLabel.Parent = distBB
+end
+
+local function updateESPDistances()
+    if not CFG.ESP then return end
+    local char = LP.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local myPos = char.HumanoidRootPart.Position
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP and plr.Character then
+            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local dist = math.floor((myPos - hrp.Position).Magnitude)
+                for _, gui in ipairs(espFolder:GetChildren()) do
+                    if gui:IsA("BillboardGui") and gui.Name == "TB_ESP_Dist" and gui.Adornee == hrp then
+                        local lbl = gui:FindFirstChildOfClass("TextLabel")
+                        if lbl then lbl.Text = dist .. " studs" end
+                    end
+                end
+            end
+        end
     end
 end
 
--- ===== MOVIMENTO BUGADO (BASEADO EM ESTADO) =====
-local bugConn, originalCF = nil, nil
+local function applyESP(on)
+    CFG.ESP = on
+    if on then
+        if espFolder then espFolder:Destroy() end
+        espFolder = Instance.new("Folder")
+        espFolder.Name = "TB_ESP_Folder"
+        espFolder.Parent = Workspace
 
-local function getHRP()
-    local char = LP.Character
-    return char and char:FindFirstChild("HumanoidRootPart")
+        for _, plr in ipairs(Players:GetPlayers()) do createESP(plr) end
+
+        if espConn then espConn:Disconnect() end
+        espConn = Players.PlayerAdded:Connect(function(plr)
+            plr.CharacterAdded:Connect(function()
+                task.wait(0.5)
+                if CFG.ESP then createESP(plr) end
+            end)
+        end)
+
+        if espUpdateConn then espUpdateConn:Disconnect() end
+        espUpdateConn = RunService.Heartbeat:Connect(function()
+            if CFG.ESP then updateESPDistances() end
+        end)
+    else
+        if espFolder then espFolder:Destroy() espFolder = nil end
+        if espConn then espConn:Disconnect() espConn = nil end
+        if espUpdateConn then espUpdateConn:Disconnect() espUpdateConn = nil end
+    end
 end
+
+-- ===== MOVIMENTO BUGADO =====
+local bugConn = nil
+local bugTimer = 0
+local bugActive = false
 
 local function startBugMove()
     if bugConn then return end
     CFG.BugMove = true
+    bugTimer = 0
+    bugActive = false
 
-    bugConn = RunService.Heartbeat:Connect(function()
+    bugConn = RunService.Heartbeat:Connect(function(dt)
         if not CFG.BugMove then return end
         local char = LP.Character
         if not char then return end
@@ -169,18 +383,24 @@ local function startBugMove()
         if not hum or not hrp then return end
 
         local state = hum:GetState()
-        -- Detecta pulo ou escalada
         if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Climbing then
-            if not originalCF then originalCF = hrp.CFrame end
-            local fwd = hrp.CFrame.LookVector
-            local dist = CFG.BugDistance * 0.1
-            -- Alterna frente/trás a cada frame
-            hrp.CFrame = hrp.CFrame + (math.random() > 0.5 and fwd or -fwd) * dist
-        else
-            if originalCF then
-                hrp.CFrame = hrp.CFrame:Lerp(originalCF, 0.5)
-                originalCF = nil
+            bugTimer = bugTimer + dt
+            if not bugActive and bugTimer > 0.1 then
+                bugActive = true
+                bugTimer = 0
+                local fwd = hrp.CFrame.LookVector
+                local dist = CFG.BugDistance * 0.15
+                hrp.CFrame = hrp.CFrame + fwd * dist
+                task.delay(0.05, function()
+                    if hrp and hrp.Parent then
+                        hrp.CFrame = hrp.CFrame - fwd * dist
+                    end
+                    bugActive = false
+                end)
             end
+        else
+            bugTimer = 0
+            bugActive = false
         end
     end)
 end
@@ -188,60 +408,8 @@ end
 local function stopBugMove()
     CFG.BugMove = false
     if bugConn then bugConn:Disconnect() bugConn = nil end
-    originalCF = nil
-end
-
--- ===== ESP =====
-local espConn, espFolder
-
-local function createESP(plr)
-    if plr == LP then return end
-    if not plr.Character or not plr.Character:FindFirstChild("HumanoidRootPart") then return end
-    local hl = Instance.new("Highlight")
-    hl.Adornee = plr.Character
-    hl.FillColor = Color3.fromRGB(255, 60, 60)
-    hl.FillTransparency = 0.7
-    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    hl.Parent = espFolder
-
-    local bb = Instance.new("BillboardGui")
-    bb.Size = UDim2.new(0, 80, 0, 22)
-    bb.StudsOffset = Vector3.new(0, 3, 0)
-    bb.AlwaysOnTop = true
-    bb.Adornee = plr.Character.HumanoidRootPart
-    bb.Parent = espFolder
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, 0, 1, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = plr.Name
-    lbl.TextColor3 = Color3.fromRGB(255, 80, 80)
-    lbl.TextStrokeTransparency = 0
-    lbl.Font = Enum.Font.GothamBold
-    lbl.TextSize = 12
-    lbl.Parent = bb
-end
-
-local function applyESP(on)
-    CFG.ESP = on
-    if on then
-        if espFolder then espFolder:Destroy() end
-        espFolder = Instance.new("Folder")
-        espFolder.Name = "TB_ESP"
-        espFolder.Parent = Workspace
-        for _, plr in ipairs(Players:GetPlayers()) do createESP(plr) end
-        if espConn then espConn:Disconnect() end
-        espConn = Players.PlayerAdded:Connect(function(plr)
-            plr.CharacterAdded:Connect(function()
-                task.wait(0.5)
-                if CFG.ESP then createESP(plr) end
-            end)
-        end)
-    else
-        if espFolder then espFolder:Destroy() espFolder = nil end
-        if espConn then espConn:Disconnect() espConn = nil end
-    end
+    bugTimer = 0
+    bugActive = false
 end
 
 -- ===== TAB VISUAL =====
@@ -273,11 +441,14 @@ VisualTab:CreateSlider({
 
 VisualTab:CreateDropdown({
     Name = "Skybox",
-    Options = {"Nenhum", "Purple", "Night", "Dragon"},
+    Options = {"Nenhum", "Night", "Purple", "Dragon"},
     CurrentOption = {"Nenhum"}, Flag = "Skybox",
-    Callback = function(opt)
-        setSkybox(type(opt) == "table" and opt[1] or opt)
-    end,
+    Callback = function(opt) setSkybox(type(opt) == "table" and opt[1] or opt) end,
+})
+
+VisualTab:CreateToggle({
+    Name = "Dragão 2D no Céu", CurrentValue = false, Flag = "Dragon",
+    Callback = function(v) toggleDragon(v) end,
 })
 
 -- ===== TAB MOVIMENTO =====
@@ -310,6 +481,7 @@ ExtraTab:CreateButton({
     Callback = function()
         stopBugMove(); applyESP(false); applyAntiLag(false)
         applyFPSBoost(false); applyFOV(false); setSkybox("Nenhum")
+        toggleDragon(false)
         print("[TB] Reset completo")
     end,
 })
@@ -322,5 +494,5 @@ ExtraTab:CreateButton({
     end,
 })
 
-Rayfield:Notify({ Title = "TB Duels v1.2", Content = "Script carregado!", Duration = 3 })
-print("✅ TB Duels v1.2 carregado")
+Rayfield:Notify({ Title = "TB Duels v1.5", Content = "Script carregado!", Duration = 3 })
+print("✅ TB Duels v1.5 carregado")
