@@ -1,6 +1,6 @@
 -- ============================================
--- TB DUELS MOBILE - v1.5
--- Skybox + ESP + Movimento + Dragão 2D + Loading
+-- TB DUELS MOBILE - v1.7
+-- Wallhop + Strafe Livre + Câmera Bugada
 -- ============================================
 
 if _G.TB_LOADED then return end
@@ -107,7 +107,8 @@ TB.CFG = {
     FOVEnabled = false, FOV = 120,
     ESP = false, BugMove = false,
     BugDistance = 3, Skybox = "Nenhum",
-    Dragon = false,
+    NoLock = false, BugCam = false,
+    CamSpinSpeed = 5, StrafeForce = 3,
 }
 TB.ORIGINAL_FOV = workspace.CurrentCamera.FieldOfView
 local CFG = TB.CFG
@@ -115,7 +116,7 @@ local CFG = TB.CFG
 local Window = Rayfield:CreateWindow({
     Name = "TB Duels Mobile",
     LoadingTitle = "TB Duels",
-    LoadingSubtitle = "v1.5",
+    LoadingSubtitle = "v1.7",
     ConfigurationSaving = { Enabled = false },
     KeySystem = false,
 })
@@ -231,32 +232,8 @@ local function setSkybox(name)
     sky.Parent = Lighting
 end
 
--- ===== DRAGÃO 2D =====
-local dragonGui = Instance.new("ScreenGui")
-dragonGui.Name = "TB_Dragon"
-dragonGui.ResetOnSpawn = false
-dragonGui.IgnoreGuiInset = true
-dragonGui.DisplayOrder = 0
-dragonGui.Parent = LP:WaitForChild("PlayerGui")
-
-local dragonImg = Instance.new("ImageLabel")
-dragonImg.Size = UDim2.new(1, 0, 1, 0)
-dragonImg.BackgroundTransparency = 1
-dragonImg.Image = "rbxassetid://136931266"
-dragonImg.ImageTransparency = 1
-dragonImg.ScaleType = Enum.ScaleType.Fit
-dragonImg.ZIndex = 0
-dragonImg.Parent = dragonGui
-
-local function toggleDragon(on)
-    CFG.Dragon = on
-    dragonImg.ImageTransparency = on and 0.3 or 1
-end
-
 -- ===== ESP =====
-local espFolder = nil
-local espConn = nil
-local espUpdateConn = nil
+local espFolder, espConn, espUpdateConn
 
 local function createESP(plr)
     if plr == LP then return end
@@ -363,16 +340,18 @@ local function applyESP(on)
     end
 end
 
--- ===== MOVIMENTO BUGADO =====
+-- ===== FUNÇÕES BASE =====
+local function getHRP()
+    local char = LP.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+-- ===== WALLHOP BUGADO =====
 local bugConn = nil
-local bugTimer = 0
-local bugActive = false
 
 local function startBugMove()
     if bugConn then return end
     CFG.BugMove = true
-    bugTimer = 0
-    bugActive = false
 
     bugConn = RunService.Heartbeat:Connect(function(dt)
         if not CFG.BugMove then return end
@@ -383,24 +362,16 @@ local function startBugMove()
         if not hum or not hrp then return end
 
         local state = hum:GetState()
-        if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Climbing then
-            bugTimer = bugTimer + dt
-            if not bugActive and bugTimer > 0.1 then
-                bugActive = true
-                bugTimer = 0
-                local fwd = hrp.CFrame.LookVector
-                local dist = CFG.BugDistance * 0.15
-                hrp.CFrame = hrp.CFrame + fwd * dist
-                task.delay(0.05, function()
-                    if hrp and hrp.Parent then
-                        hrp.CFrame = hrp.CFrame - fwd * dist
-                    end
-                    bugActive = false
-                end)
+        if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall then
+            local rayParams = RaycastParams.new()
+            rayParams.FilterType = Enum.RaycastFilterType.Exclude
+            rayParams.FilterDescendantsInstances = {char}
+
+            local result = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 2.5, rayParams)
+            if result then
+                hrp.Velocity = Vector3.new(hrp.Velocity.X, CFG.BugDistance * 8, hrp.Velocity.Z)
+                hrp.CFrame = hrp.CFrame + (hrp.CFrame.LookVector * 0.05)
             end
-        else
-            bugTimer = 0
-            bugActive = false
         end
     end)
 end
@@ -408,8 +379,91 @@ end
 local function stopBugMove()
     CFG.BugMove = false
     if bugConn then bugConn:Disconnect() bugConn = nil end
-    bugTimer = 0
-    bugActive = false
+end
+
+-- ===== STRAFE LIVRE (SEM LOCK IN) =====
+local strafeConn = nil
+local strafeTimer = 0
+local strafeMode = "Lado Direito"
+
+local function startStrafe()
+    if strafeConn then return end
+    CFG.NoLock = true
+    strafeTimer = 0
+
+    strafeConn = RunService.Heartbeat:Connect(function(dt)
+        if not CFG.NoLock then return end
+        local char = LP.Character
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hum or not hrp then return end
+
+        hum.AutoRotate = true
+        if hum.PlatformStand then hum.PlatformStand = false end
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+
+        if hum.MoveDirection.Magnitude > 0.1 then
+            strafeTimer = strafeTimer + dt
+            if strafeTimer > 0.15 then
+                strafeTimer = 0
+                local cam = workspace.CurrentCamera
+                local right = cam.CFrame.RightVector
+                local forward = cam.CFrame.LookVector
+                local dir = Vector3.zero
+                local force = CFG.StrafeForce * 2
+
+                if strafeMode == "Lado Direito" then
+                    dir = right
+                elseif strafeMode == "Lado Esquerdo" then
+                    dir = -right
+                elseif strafeMode == "Diagonal Frente-Direita" then
+                    dir = (right + forward).Unit
+                elseif strafeMode == "Diagonal Frente-Esquerda" then
+                    dir = (-right + forward).Unit
+                elseif strafeMode == "Reto pra Trás" then
+                    dir = -forward
+                elseif strafeMode == "Aleatório" then
+                    local opts = {right, -right, forward, -forward, (right + forward).Unit, (-right + forward).Unit}
+                    dir = opts[math.random(1, #opts)]
+                end
+
+                hrp.Velocity = hrp.Velocity + dir * force
+            end
+        end
+    end)
+end
+
+local function stopStrafe()
+    CFG.NoLock = false
+    if strafeConn then strafeConn:Disconnect() strafeConn = nil end
+end
+
+-- ===== CÂMERA BUGADA =====
+local bugCamConn = nil
+local camAngle = 0
+
+local function startBugCam()
+    if bugCamConn then return end
+    CFG.BugCam = true
+    camAngle = 0
+
+    bugCamConn = RunService.RenderStepped:Connect(function(dt)
+        if not CFG.BugCam then return end
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+
+        camAngle = camAngle + dt * CFG.CamSpinSpeed
+        local currentCF = cam.CFrame
+        local roll = CFrame.Angles(0, 0, math.rad(math.sin(camAngle) * 30))
+        cam.CFrame = currentCF * roll
+    end)
+end
+
+local function stopBugCam()
+    CFG.BugCam = false
+    if bugCamConn then bugCamConn:Disconnect() bugCamConn = nil end
 end
 
 -- ===== TAB VISUAL =====
@@ -447,24 +501,63 @@ VisualTab:CreateDropdown({
 })
 
 VisualTab:CreateToggle({
-    Name = "Dragão 2D no Céu", CurrentValue = false, Flag = "Dragon",
-    Callback = function(v) toggleDragon(v) end,
+    Name = "Câmera Bugada", CurrentValue = false, Flag = "BugCam",
+    Callback = function(v)
+        if v then startBugCam() else stopBugCam() end
+    end,
+})
+
+VisualTab:CreateSlider({
+    Name = "Velocidade da Câmera", Range = {1, 15}, Increment = 1, Suffix = "x",
+    CurrentValue = 5, Flag = "CamSpinSpeed",
+    Callback = function(v) CFG.CamSpinSpeed = v end,
 })
 
 -- ===== TAB MOVIMENTO =====
 local MoveTab = Window:CreateTab("Movimento", 4483362458)
 
+MoveTab:CreateSection("Wallhop")
+
 MoveTab:CreateToggle({
-    Name = "Movimento Bugado (Pulo/Escalada)", CurrentValue = false, Flag = "BugMove",
+    Name = "Wallhop Bugado (Escalada)", CurrentValue = false, Flag = "BugMove",
     Callback = function(v)
         if v then startBugMove() else stopBugMove() end
     end,
 })
 
 MoveTab:CreateSlider({
-    Name = "Força do Bug", Range = {1, 8}, Increment = 1, Suffix = "x",
+    Name = "Força da Escalada", Range = {5, 30}, Increment = 1, Suffix = "x",
     CurrentValue = 3, Flag = "BugDistance",
     Callback = function(v) CFG.BugDistance = v end,
+})
+
+MoveTab:CreateSection("Strafe Livre (Sem Lock In)")
+
+MoveTab:CreateDropdown({
+    Name = "Direção do Strafe",
+    Options = {
+        "Lado Direito", "Lado Esquerdo",
+        "Diagonal Frente-Direita", "Diagonal Frente-Esquerda",
+        "Reto pra Trás", "Aleatório"
+    },
+    CurrentOption = {"Lado Direito"},
+    Flag = "StrafeMode",
+    Callback = function(opt)
+        strafeMode = type(opt) == "table" and opt[1] or opt
+    end,
+})
+
+MoveTab:CreateToggle({
+    Name = "Strafe Livre", CurrentValue = false, Flag = "NoLock",
+    Callback = function(v)
+        if v then startStrafe() else stopStrafe() end
+    end,
+})
+
+MoveTab:CreateSlider({
+    Name = "Força do Strafe", Range = {1, 10}, Increment = 1, Suffix = "x",
+    CurrentValue = 3, Flag = "StrafeForce",
+    Callback = function(v) CFG.StrafeForce = v end,
 })
 
 -- ===== TAB ESP =====
@@ -479,9 +572,9 @@ local ExtraTab = Window:CreateTab("Extras", 4483362458)
 ExtraTab:CreateButton({
     Name = "Resetar Tudo",
     Callback = function()
-        stopBugMove(); applyESP(false); applyAntiLag(false)
+        stopBugMove(); stopStrafe(); stopBugCam()
+        applyESP(false); applyAntiLag(false)
         applyFPSBoost(false); applyFOV(false); setSkybox("Nenhum")
-        toggleDragon(false)
         print("[TB] Reset completo")
     end,
 })
@@ -494,5 +587,5 @@ ExtraTab:CreateButton({
     end,
 })
 
-Rayfield:Notify({ Title = "TB Duels v1.5", Content = "Script carregado!", Duration = 3 })
-print("✅ TB Duels v1.5 carregado")
+Rayfield:Notify({ Title = "TB Duels v1.7", Content = "Script carregado!", Duration = 3 })
+print("✅ TB Duels v1.7 carregado")
