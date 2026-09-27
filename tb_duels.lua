@@ -1,6 +1,6 @@
 -- ============================================
--- TB DUELS MOBILE - v1.7
--- Wallhop + Strafe Livre + Câmera Bugada
+-- TB DUELS MOBILE - v1.8
+-- Câmera Tremendo + Wallhop Virar + Strafe Virar + Jump Power
 -- ============================================
 
 if _G.TB_LOADED then return end
@@ -105,18 +105,21 @@ local TB = _G.TB
 TB.CFG = {
     AntiLag = false, FPSBoost = false,
     FOVEnabled = false, FOV = 120,
-    ESP = false, BugMove = false,
-    BugDistance = 3, Skybox = "Nenhum",
-    NoLock = false, BugCam = false,
-    CamSpinSpeed = 5, StrafeForce = 3,
+    ESP = false, Skybox = "Nenhum",
+    CamShake = false, CamShakeSpeed = 8,
+    WallhopTurn = false, StrafeTurn = false,
+    JumpPowerEnabled = false, JumpPowerValue = 75,
+    CamShakeAmp = 15,
 }
 TB.ORIGINAL_FOV = workspace.CurrentCamera.FieldOfView
+TB.ORIGINAL_JUMP = 50
 local CFG = TB.CFG
 
 local Window = Rayfield:CreateWindow({
     Name = "TB Duels Mobile",
     LoadingTitle = "TB Duels",
-    LoadingSubtitle = "v1.7",
+    LoadingSubtitle = "v1.8",
+    Icon = 934345192,  -- Ícone do Sharingan (Itachi Mangekyo) [citation:27][citation:31]
     ConfigurationSaving = { Enabled = false },
     KeySystem = false,
 })
@@ -144,7 +147,6 @@ local function applyAntiLag(on)
             end)
         end
         settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-        settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
     else
         settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
         Lighting.GlobalShadows = true
@@ -244,7 +246,6 @@ local function createESP(plr)
     box.Name = "TB_ESP_Box"
     box.Adornee = hrp
     box.AlwaysOnTop = true
-    box.ZIndex = 5
     box.Size = Vector3.new(4, 6, 4)
     box.Transparency = 0.5
     box.Color3 = Color3.fromRGB(255, 60, 60)
@@ -264,7 +265,6 @@ local function createESP(plr)
     label.Text = plr.Name
     label.TextColor3 = Color3.fromRGB(255, 80, 80)
     label.TextStrokeTransparency = 0
-    label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     label.Font = Enum.Font.GothamBold
     label.TextSize = 14
     label.Parent = bb
@@ -283,7 +283,6 @@ local function createESP(plr)
     distLabel.Text = "..."
     distLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
     distLabel.TextStrokeTransparency = 0
-    distLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     distLabel.Font = Enum.Font.Gotham
     distLabel.TextSize = 12
     distLabel.Parent = distBB
@@ -346,15 +345,75 @@ local function getHRP()
     return char and char:FindFirstChild("HumanoidRootPart")
 end
 
--- ===== WALLHOP BUGADO =====
-local bugConn = nil
+-- ===== JUMP POWER =====
+local jumpConn = nil
+local jumpOriginal = 50
 
-local function startBugMove()
-    if bugConn then return end
-    CFG.BugMove = true
+local function startJumpPower()
+    if jumpConn then return end
+    CFG.JumpPowerEnabled = true
+    local char = LP.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        jumpOriginal = hum.JumpPower
+        hum.JumpPower = CFG.JumpPowerValue
+    end
 
-    bugConn = RunService.Heartbeat:Connect(function(dt)
-        if not CFG.BugMove then return end
+    jumpConn = RunService.Heartbeat:Connect(function()
+        if not CFG.JumpPowerEnabled then return end
+        local c = LP.Character
+        if not c then return end
+        local h = c:FindFirstChildOfClass("Humanoid")
+        if h and h.JumpPower ~= CFG.JumpPowerValue then
+            h.JumpPower = CFG.JumpPowerValue
+        end
+    end)
+end
+
+local function stopJumpPower()
+    CFG.JumpPowerEnabled = false
+    if jumpConn then jumpConn:Disconnect() jumpConn = nil end
+    local char = LP.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.JumpPower = jumpOriginal end
+end
+
+-- ===== CÂMERA TREMENDO (ESQUERDA/DIREITA) =====
+local camShakeConn = nil
+local shakeTimer = 0
+
+local function startCamShake()
+    if camShakeConn then return end
+    CFG.CamShake = true
+    shakeTimer = 0
+
+    camShakeConn = RunService.RenderStepped:Connect(function(dt)
+        if not CFG.CamShake then return end
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+
+        shakeTimer = shakeTimer + dt
+        -- Tremor lateral (roll) alternando rápido
+        local roll = math.sin(shakeTimer * CFG.CamShakeSpeed) * math.rad(CFG.CamShakeAmp)
+        cam.CFrame = cam.CFrame * CFrame.Angles(0, 0, roll)
+    end)
+end
+
+local function stopCamShake()
+    CFG.CamShake = false
+    if camShakeConn then camShakeConn:Disconnect() camShakeConn = nil end
+end
+
+-- ===== WALLHOP VIRAR (PULAR E VIRAR PRO LADO CONTRÁRIO) =====
+local wallhopConn = nil
+local wallhopCooldown = false
+
+local function startWallhopTurn()
+    if wallhopConn then return end
+    CFG.WallhopTurn = true
+
+    wallhopConn = RunService.Heartbeat:Connect(function(dt)
+        if not CFG.WallhopTurn then return end
         local char = LP.Character
         if not char then return end
         local hum = char:FindFirstChildOfClass("Humanoid")
@@ -362,108 +421,56 @@ local function startBugMove()
         if not hum or not hrp then return end
 
         local state = hum:GetState()
-        if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall then
-            local rayParams = RaycastParams.new()
-            rayParams.FilterType = Enum.RaycastFilterType.Exclude
-            rayParams.FilterDescendantsInstances = {char}
-
-            local result = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 2.5, rayParams)
-            if result then
-                hrp.Velocity = Vector3.new(hrp.Velocity.X, CFG.BugDistance * 8, hrp.Velocity.Z)
-                hrp.CFrame = hrp.CFrame + (hrp.CFrame.LookVector * 0.05)
-            end
+        if (state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall) and not wallhopCooldown then
+            wallhopCooldown = true
+            -- Gira 180° no eixo Y (vira pro lado contrário)
+            hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(180), 0)
+            task.wait(0.3)  -- Cooldown pra não virar infinitamente
+            wallhopCooldown = false
         end
     end)
 end
 
-local function stopBugMove()
-    CFG.BugMove = false
-    if bugConn then bugConn:Disconnect() bugConn = nil end
+local function stopWallhopTurn()
+    CFG.WallhopTurn = false
+    if wallhopConn then wallhopConn:Disconnect() wallhopConn = nil end
+    wallhopCooldown = false
 end
 
--- ===== STRAFE LIVRE (SEM LOCK IN) =====
-local strafeConn = nil
-local strafeTimer = 0
-local strafeMode = "Lado Direito"
+-- ===== STRAFE VIRAR (PULAR E VIRAR PRA TRÁS) =====
+local strafeTurnConn = nil
+local strafeCooldown = false
 
-local function startStrafe()
-    if strafeConn then return end
-    CFG.NoLock = true
-    strafeTimer = 0
+local function startStrafeTurn()
+    if strafeTurnConn then return end
+    CFG.StrafeTurn = true
 
-    strafeConn = RunService.Heartbeat:Connect(function(dt)
-        if not CFG.NoLock then return end
+    strafeTurnConn = RunService.Heartbeat:Connect(function(dt)
+        if not CFG.StrafeTurn then return end
         local char = LP.Character
         if not char then return end
         local hum = char:FindFirstChildOfClass("Humanoid")
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hum or not hrp then return end
 
-        hum.AutoRotate = true
-        if hum.PlatformStand then hum.PlatformStand = false end
-        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-
-        if hum.MoveDirection.Magnitude > 0.1 then
-            strafeTimer = strafeTimer + dt
-            if strafeTimer > 0.15 then
-                strafeTimer = 0
-                local cam = workspace.CurrentCamera
-                local right = cam.CFrame.RightVector
-                local forward = cam.CFrame.LookVector
-                local dir = Vector3.zero
-                local force = CFG.StrafeForce * 2
-
-                if strafeMode == "Lado Direito" then
-                    dir = right
-                elseif strafeMode == "Lado Esquerdo" then
-                    dir = -right
-                elseif strafeMode == "Diagonal Frente-Direita" then
-                    dir = (right + forward).Unit
-                elseif strafeMode == "Diagonal Frente-Esquerda" then
-                    dir = (-right + forward).Unit
-                elseif strafeMode == "Reto pra Trás" then
-                    dir = -forward
-                elseif strafeMode == "Aleatório" then
-                    local opts = {right, -right, forward, -forward, (right + forward).Unit, (-right + forward).Unit}
-                    dir = opts[math.random(1, #opts)]
-                end
-
-                hrp.Velocity = hrp.Velocity + dir * force
+        local state = hum:GetState()
+        -- Só age quando você tá no ar E se movendo
+        if (state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall) and not strafeCooldown then
+            if hum.MoveDirection.Magnitude > 0.1 then
+                strafeCooldown = true
+                -- Gira 180° (vira pra trás)
+                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(180), 0)
+                task.wait(0.4)
+                strafeCooldown = false
             end
         end
     end)
 end
 
-local function stopStrafe()
-    CFG.NoLock = false
-    if strafeConn then strafeConn:Disconnect() strafeConn = nil end
-end
-
--- ===== CÂMERA BUGADA =====
-local bugCamConn = nil
-local camAngle = 0
-
-local function startBugCam()
-    if bugCamConn then return end
-    CFG.BugCam = true
-    camAngle = 0
-
-    bugCamConn = RunService.RenderStepped:Connect(function(dt)
-        if not CFG.BugCam then return end
-        local cam = workspace.CurrentCamera
-        if not cam then return end
-
-        camAngle = camAngle + dt * CFG.CamSpinSpeed
-        local currentCF = cam.CFrame
-        local roll = CFrame.Angles(0, 0, math.rad(math.sin(camAngle) * 30))
-        cam.CFrame = currentCF * roll
-    end)
-end
-
-local function stopBugCam()
-    CFG.BugCam = false
-    if bugCamConn then bugCamConn:Disconnect() bugCamConn = nil end
+local function stopStrafeTurn()
+    CFG.StrafeTurn = false
+    if strafeTurnConn then strafeTurnConn:Disconnect() strafeTurnConn = nil end
+    strafeCooldown = false
 end
 
 -- ===== TAB VISUAL =====
@@ -500,64 +507,66 @@ VisualTab:CreateDropdown({
     Callback = function(opt) setSkybox(type(opt) == "table" and opt[1] or opt) end,
 })
 
+VisualTab:CreateSection("Câmera")
+
 VisualTab:CreateToggle({
-    Name = "Câmera Bugada", CurrentValue = false, Flag = "BugCam",
+    Name = "Câmera Tremendo (L/R)", CurrentValue = false, Flag = "CamShake",
     Callback = function(v)
-        if v then startBugCam() else stopBugCam() end
+        if v then startCamShake() else stopCamShake() end
     end,
 })
 
 VisualTab:CreateSlider({
-    Name = "Velocidade da Câmera", Range = {1, 15}, Increment = 1, Suffix = "x",
-    CurrentValue = 5, Flag = "CamSpinSpeed",
-    Callback = function(v) CFG.CamSpinSpeed = v end,
+    Name = "Velocidade do Tremor", Range = {1, 20}, Increment = 1, Suffix = "x",
+    CurrentValue = 8, Flag = "CamShakeSpeed",
+    Callback = function(v) CFG.CamShakeSpeed = v end,
+})
+
+VisualTab:CreateSlider({
+    Name = "Intensidade do Tremor", Range = {5, 45}, Increment = 1, Suffix = "°",
+    CurrentValue = 15, Flag = "CamShakeAmp",
+    Callback = function(v) CFG.CamShakeAmp = v end,
 })
 
 -- ===== TAB MOVIMENTO =====
 local MoveTab = Window:CreateTab("Movimento", 4483362458)
 
-MoveTab:CreateSection("Wallhop")
+MoveTab:CreateSection("Pulo")
 
 MoveTab:CreateToggle({
-    Name = "Wallhop Bugado (Escalada)", CurrentValue = false, Flag = "BugMove",
+    Name = "Jump Power Boost", CurrentValue = false, Flag = "JumpPowerEnabled",
     Callback = function(v)
-        if v then startBugMove() else stopBugMove() end
+        if v then startJumpPower() else stopJumpPower() end
     end,
 })
 
 MoveTab:CreateSlider({
-    Name = "Força da Escalada", Range = {5, 30}, Increment = 1, Suffix = "x",
-    CurrentValue = 3, Flag = "BugDistance",
-    Callback = function(v) CFG.BugDistance = v end,
+    Name = "Jump Power", Range = {50, 200}, Increment = 5, Suffix = "",
+    CurrentValue = 75, Flag = "JumpPowerValue",
+    Callback = function(v)
+        CFG.JumpPowerValue = v
+        if CFG.JumpPowerEnabled then
+            local char = LP.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.JumpPower = v end
+        end
+    end,
 })
 
-MoveTab:CreateSection("Strafe Livre (Sem Lock In)")
+MoveTab:CreateSection("Movimentação Bugada")
 
-MoveTab:CreateDropdown({
-    Name = "Direção do Strafe",
-    Options = {
-        "Lado Direito", "Lado Esquerdo",
-        "Diagonal Frente-Direita", "Diagonal Frente-Esquerda",
-        "Reto pra Trás", "Aleatório"
-    },
-    CurrentOption = {"Lado Direito"},
-    Flag = "StrafeMode",
-    Callback = function(opt)
-        strafeMode = type(opt) == "table" and opt[1] or opt
+MoveTab:CreateToggle({
+    Name = "Wallhop Virar (Lado Contrário)", CurrentValue = false, Flag = "WallhopTurn",
+    Callback = function(v)
+        if v then startWallhopTurn() else stopWallhopTurn() end
     end,
 })
 
 MoveTab:CreateToggle({
-    Name = "Strafe Livre", CurrentValue = false, Flag = "NoLock",
+    Name = "Strafe Virar (Pra Trás)", CurrentValue = false, Flag = "StrafeTurn",
     Callback = function(v)
-        if v then startStrafe() else stopStrafe() end
+        if v then startStrafeTurn() else stopStrafeTurn() end
     end,
-})
-
-MoveTab:CreateSlider({
-    Name = "Força do Strafe", Range = {1, 10}, Increment = 1, Suffix = "x",
-    CurrentValue = 3, Flag = "StrafeForce",
-    Callback = function(v) CFG.StrafeForce = v end,
 })
 
 -- ===== TAB ESP =====
@@ -572,8 +581,8 @@ local ExtraTab = Window:CreateTab("Extras", 4483362458)
 ExtraTab:CreateButton({
     Name = "Resetar Tudo",
     Callback = function()
-        stopBugMove(); stopStrafe(); stopBugCam()
-        applyESP(false); applyAntiLag(false)
+        stopCamShake(); stopWallhopTurn(); stopStrafeTurn()
+        stopJumpPower(); applyESP(false); applyAntiLag(false)
         applyFPSBoost(false); applyFOV(false); setSkybox("Nenhum")
         print("[TB] Reset completo")
     end,
@@ -587,5 +596,5 @@ ExtraTab:CreateButton({
     end,
 })
 
-Rayfield:Notify({ Title = "TB Duels v1.7", Content = "Script carregado!", Duration = 3 })
-print("✅ TB Duels v1.7 carregado")
+Rayfield:Notify({ Title = "TB Duels v1.8", Content = "Script carregado!", Duration = 3 })
+print("✅ TB Duels v1.8 carregado")
