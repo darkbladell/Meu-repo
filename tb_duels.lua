@@ -1,16 +1,34 @@
 -- ============================================
--- TB DUELS MOBILE - v1.8
--- Câmera Tremendo + Wallhop Virar + Strafe Virar + Jump Power
+-- TB DUELS MOBILE - v1.9
+-- Fundo Sasuke + Ícone Sharingan integrados
 -- ============================================
 
 if _G.TB_LOADED then return end
 _G.TB_LOADED = true
+
+-- ===== FUNDO DO SASUKE (ATRÁS DA GUI) =====
+local sasukeGui = Instance.new("ScreenGui")
+sasukeGui.Name = "TB_SasukeBG"
+sasukeGui.ResetOnSpawn = false
+sasukeGui.IgnoreGuiInset = true
+sasukeGui.DisplayOrder = -1  -- Fica atrás de tudo
+sasukeGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+
+local sasukeImg = Instance.new("ImageLabel")
+sasukeImg.Size = UDim2.new(1, 0, 1, 0)
+sasukeImg.BackgroundTransparency = 1
+sasukeImg.Image = "rbxassetid://7530797014"
+sasukeImg.ImageTransparency = 0.75  -- Bem apagado pra não atrapalhar
+sasukeImg.ScaleType = Enum.ScaleType.Crop
+sasukeImg.ZIndex = 0
+sasukeImg.Parent = sasukeGui
 
 -- ===== LOADING SCREEN =====
 local loadingGui = Instance.new("ScreenGui")
 loadingGui.Name = "TB_Loading"
 loadingGui.ResetOnSpawn = false
 loadingGui.IgnoreGuiInset = true
+loadingGui.DisplayOrder = 10
 loadingGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 
 local bg = Instance.new("Frame")
@@ -110,16 +128,16 @@ TB.CFG = {
     WallhopTurn = false, StrafeTurn = false,
     JumpPowerEnabled = false, JumpPowerValue = 75,
     CamShakeAmp = 15,
+    SasukeBG = true,
 }
 TB.ORIGINAL_FOV = workspace.CurrentCamera.FieldOfView
-TB.ORIGINAL_JUMP = 50
 local CFG = TB.CFG
 
 local Window = Rayfield:CreateWindow({
     Name = "TB Duels Mobile",
     LoadingTitle = "TB Duels",
-    LoadingSubtitle = "v1.8",
-    Icon = 934345192,  -- Ícone do Sharingan (Itachi Mangekyo) [citation:27][citation:31]
+    LoadingSubtitle = "v1.9 • Sharingan Edition",
+    Icon = 415755275,  -- Ícone do Sharingan
     ConfigurationSaving = { Enabled = false },
     KeySystem = false,
 })
@@ -378,7 +396,7 @@ local function stopJumpPower()
     if hum then hum.JumpPower = jumpOriginal end
 end
 
--- ===== CÂMERA TREMENDO (ESQUERDA/DIREITA) =====
+-- ===== CÂMERA TREMENDO =====
 local camShakeConn = nil
 local shakeTimer = 0
 
@@ -391,9 +409,7 @@ local function startCamShake()
         if not CFG.CamShake then return end
         local cam = workspace.CurrentCamera
         if not cam then return end
-
         shakeTimer = shakeTimer + dt
-        -- Tremor lateral (roll) alternando rápido
         local roll = math.sin(shakeTimer * CFG.CamShakeSpeed) * math.rad(CFG.CamShakeAmp)
         cam.CFrame = cam.CFrame * CFrame.Angles(0, 0, roll)
     end)
@@ -404,7 +420,7 @@ local function stopCamShake()
     if camShakeConn then camShakeConn:Disconnect() camShakeConn = nil end
 end
 
--- ===== WALLHOP VIRAR (PULAR E VIRAR PRO LADO CONTRÁRIO) =====
+-- ===== WALLHOP VIRAR =====
 local wallhopConn = nil
 local wallhopCooldown = false
 
@@ -423,9 +439,8 @@ local function startWallhopTurn()
         local state = hum:GetState()
         if (state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall) and not wallhopCooldown then
             wallhopCooldown = true
-            -- Gira 180° no eixo Y (vira pro lado contrário)
             hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(180), 0)
-            task.wait(0.3)  -- Cooldown pra não virar infinitamente
+            task.wait(0.3)
             wallhopCooldown = false
         end
     end)
@@ -437,7 +452,7 @@ local function stopWallhopTurn()
     wallhopCooldown = false
 end
 
--- ===== STRAFE VIRAR (PULAR E VIRAR PRA TRÁS) =====
+-- ===== STRAFE VIRAR =====
 local strafeTurnConn = nil
 local strafeCooldown = false
 
@@ -454,11 +469,9 @@ local function startStrafeTurn()
         if not hum or not hrp then return end
 
         local state = hum:GetState()
-        -- Só age quando você tá no ar E se movendo
         if (state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall) and not strafeCooldown then
             if hum.MoveDirection.Magnitude > 0.1 then
                 strafeCooldown = true
-                -- Gira 180° (vira pra trás)
                 hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(180), 0)
                 task.wait(0.4)
                 strafeCooldown = false
@@ -505,6 +518,14 @@ VisualTab:CreateDropdown({
     Options = {"Nenhum", "Night", "Purple", "Dragon"},
     CurrentOption = {"Nenhum"}, Flag = "Skybox",
     Callback = function(opt) setSkybox(type(opt) == "table" and opt[1] or opt) end,
+})
+
+VisualTab:CreateToggle({
+    Name = "Fundo Sasuke (atrás da GUI)", CurrentValue = true, Flag = "SasukeBG",
+    Callback = function(v)
+        CFG.SasukeBG = v
+        sasukeImg.ImageTransparency = v and 0.75 or 1
+    end,
 })
 
 VisualTab:CreateSection("Câmera")
@@ -584,6 +605,7 @@ ExtraTab:CreateButton({
         stopCamShake(); stopWallhopTurn(); stopStrafeTurn()
         stopJumpPower(); applyESP(false); applyAntiLag(false)
         applyFPSBoost(false); applyFOV(false); setSkybox("Nenhum")
+        sasukeImg.ImageTransparency = 0.75
         print("[TB] Reset completo")
     end,
 })
@@ -592,9 +614,10 @@ ExtraTab:CreateButton({
     Name = "Destruir Interface",
     Callback = function()
         Rayfield:Destroy()
+        sasukeGui:Destroy()
         _G.TB_LOADED = false
     end,
 })
 
-Rayfield:Notify({ Title = "TB Duels v1.8", Content = "Script carregado!", Duration = 3 })
-print("✅ TB Duels v1.8 carregado")
+Rayfield:Notify({ Title = "TB Duels v1.9", Content = "Sharingan Edition carregado!", Duration = 3 })
+print("✅ TB Duels v1.9 - Sharingan Edition carregado")
