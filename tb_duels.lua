@@ -1,27 +1,10 @@
 -- ============================================
--- TB DUELS MOBILE - v1.9
--- Fundo Sasuke + Ícone Sharingan integrados
+-- TB DUELS MOBILE - v2.0
+-- Câmera Reta + ESP Bots + Ícone Corrigido
 -- ============================================
 
 if _G.TB_LOADED then return end
 _G.TB_LOADED = true
-
--- ===== FUNDO DO SASUKE (ATRÁS DA GUI) =====
-local sasukeGui = Instance.new("ScreenGui")
-sasukeGui.Name = "TB_SasukeBG"
-sasukeGui.ResetOnSpawn = false
-sasukeGui.IgnoreGuiInset = true
-sasukeGui.DisplayOrder = -1  -- Fica atrás de tudo
-sasukeGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
-
-local sasukeImg = Instance.new("ImageLabel")
-sasukeImg.Size = UDim2.new(1, 0, 1, 0)
-sasukeImg.BackgroundTransparency = 1
-sasukeImg.Image = "rbxassetid://7530797014"
-sasukeImg.ImageTransparency = 0.75  -- Bem apagado pra não atrapalhar
-sasukeImg.ScaleType = Enum.ScaleType.Crop
-sasukeImg.ZIndex = 0
-sasukeImg.Parent = sasukeGui
 
 -- ===== LOADING SCREEN =====
 local loadingGui = Instance.new("ScreenGui")
@@ -128,16 +111,16 @@ TB.CFG = {
     WallhopTurn = false, StrafeTurn = false,
     JumpPowerEnabled = false, JumpPowerValue = 75,
     CamShakeAmp = 15,
-    SasukeBG = true,
 }
 TB.ORIGINAL_FOV = workspace.CurrentCamera.FieldOfView
 local CFG = TB.CFG
 
+-- ÍCONE: Vou usar um ID de ícone genérico que funciona (seta vermelha)
 local Window = Rayfield:CreateWindow({
     Name = "TB Duels Mobile",
     LoadingTitle = "TB Duels",
-    LoadingSubtitle = "v1.9 • Sharingan Edition",
-    Icon = 415755275,  -- Ícone do Sharingan
+    LoadingSubtitle = "v2.0",
+    Icon = 4483362458,  -- ID genérico que funciona
     ConfigurationSaving = { Enabled = false },
     KeySystem = false,
 })
@@ -252,25 +235,37 @@ local function setSkybox(name)
     sky.Parent = Lighting
 end
 
--- ===== ESP =====
+-- ===== ESP SÓ PARA BOTS =====
 local espFolder, espConn, espUpdateConn
 
-local function createESP(plr)
-    if plr == LP then return end
-    if not plr.Character or not plr.Character:FindFirstChild("HumanoidRootPart") then return end
-    local hrp = plr.Character.HumanoidRootPart
+-- Função para verificar se um personagem é de um player real
+local function isRealPlayer(character)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr.Character == character then
+            return true
+        end
+    end
+    return false
+end
+
+local function createESP(character)
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    -- Só aplica ESP se NÃO for player real (ou seja, é bot)
+    if isRealPlayer(character) then return end
+
+    local hrp = character.HumanoidRootPart
 
     local box = Instance.new("BoxHandleAdornment")
-    box.Name = "TB_ESP_Box"
+    box.Name = "TB_ESP_Bot"
     box.Adornee = hrp
     box.AlwaysOnTop = true
     box.Size = Vector3.new(4, 6, 4)
     box.Transparency = 0.5
-    box.Color3 = Color3.fromRGB(255, 60, 60)
+    box.Color3 = Color3.fromRGB(255, 100, 0)  -- Laranja (diferente dos players)
     box.Parent = espFolder
 
     local bb = Instance.new("BillboardGui")
-    bb.Name = "TB_ESP_Name"
+    bb.Name = "TB_ESP_BotName"
     bb.Size = UDim2.new(0, 100, 0, 24)
     bb.StudsOffset = Vector3.new(0, 3.5, 0)
     bb.AlwaysOnTop = true
@@ -280,50 +275,20 @@ local function createESP(plr)
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, 0, 1, 0)
     label.BackgroundTransparency = 1
-    label.Text = plr.Name
-    label.TextColor3 = Color3.fromRGB(255, 80, 80)
+    label.Text = "BOT"
+    label.TextColor3 = Color3.fromRGB(255, 150, 50)
     label.TextStrokeTransparency = 0
     label.Font = Enum.Font.GothamBold
     label.TextSize = 14
     label.Parent = bb
-
-    local distBB = Instance.new("BillboardGui")
-    distBB.Name = "TB_ESP_Dist"
-    distBB.Size = UDim2.new(0, 100, 0, 20)
-    distBB.StudsOffset = Vector3.new(0, 2.5, 0)
-    distBB.AlwaysOnTop = true
-    distBB.Adornee = hrp
-    distBB.Parent = espFolder
-
-    local distLabel = Instance.new("TextLabel")
-    distLabel.Size = UDim2.new(1, 0, 1, 0)
-    distLabel.BackgroundTransparency = 1
-    distLabel.Text = "..."
-    distLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
-    distLabel.TextStrokeTransparency = 0
-    distLabel.Font = Enum.Font.Gotham
-    distLabel.TextSize = 12
-    distLabel.Parent = distBB
 end
 
-local function updateESPDistances()
+local function scanForBots()
     if not CFG.ESP then return end
-    local char = LP.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-    local myPos = char.HumanoidRootPart.Position
-
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LP and plr.Character then
-            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                local dist = math.floor((myPos - hrp.Position).Magnitude)
-                for _, gui in ipairs(espFolder:GetChildren()) do
-                    if gui:IsA("BillboardGui") and gui.Name == "TB_ESP_Dist" and gui.Adornee == hrp then
-                        local lbl = gui:FindFirstChildOfClass("TextLabel")
-                        if lbl then lbl.Text = dist .. " studs" end
-                    end
-                end
-            end
+    -- Percorre todos os personagens no Workspace
+    for _, obj in ipairs(Workspace:GetChildren()) do
+        if obj:IsA("Model") and obj:FindFirstChild("Humanoid") then
+            createESP(obj)
         end
     end
 end
@@ -333,27 +298,24 @@ local function applyESP(on)
     if on then
         if espFolder then espFolder:Destroy() end
         espFolder = Instance.new("Folder")
-        espFolder.Name = "TB_ESP_Folder"
+        espFolder.Name = "TB_ESP_Bots"
         espFolder.Parent = Workspace
 
-        for _, plr in ipairs(Players:GetPlayers()) do createESP(plr) end
+        -- Escaneia bots existentes
+        scanForBots()
 
+        -- Monitora novos bots que aparecem
         if espConn then espConn:Disconnect() end
-        espConn = Players.PlayerAdded:Connect(function(plr)
-            plr.CharacterAdded:Connect(function()
+        espConn = Workspace.DescendantAdded:Connect(function(d)
+            if not CFG.ESP then return end
+            if d:IsA("Model") and d:FindFirstChild("Humanoid") then
                 task.wait(0.5)
-                if CFG.ESP then createESP(plr) end
-            end)
-        end)
-
-        if espUpdateConn then espUpdateConn:Disconnect() end
-        espUpdateConn = RunService.Heartbeat:Connect(function()
-            if CFG.ESP then updateESPDistances() end
+                if CFG.ESP then createESP(d) end
+            end
         end)
     else
         if espFolder then espFolder:Destroy() espFolder = nil end
         if espConn then espConn:Disconnect() espConn = nil end
-        if espUpdateConn then espUpdateConn:Disconnect() espUpdateConn = nil end
     end
 end
 
@@ -396,7 +358,7 @@ local function stopJumpPower()
     if hum then hum.JumpPower = jumpOriginal end
 end
 
--- ===== CÂMERA TREMENDO =====
+-- ===== CÂMERA TREMENDO (RETA - ESQUERDA/DIREITA) =====
 local camShakeConn = nil
 local shakeTimer = 0
 
@@ -410,8 +372,9 @@ local function startCamShake()
         local cam = workspace.CurrentCamera
         if not cam then return end
         shakeTimer = shakeTimer + dt
-        local roll = math.sin(shakeTimer * CFG.CamShakeSpeed) * math.rad(CFG.CamShakeAmp)
-        cam.CFrame = cam.CFrame * CFrame.Angles(0, 0, roll)
+        -- Gira RETO (yaw) em vez de inclinar (roll)
+        local yaw = math.sin(shakeTimer * CFG.CamShakeSpeed) * math.rad(CFG.CamShakeAmp)
+        cam.CFrame = cam.CFrame * CFrame.Angles(0, yaw, 0)  -- Y = yaw (reto)
     end)
 end
 
@@ -520,18 +483,10 @@ VisualTab:CreateDropdown({
     Callback = function(opt) setSkybox(type(opt) == "table" and opt[1] or opt) end,
 })
 
-VisualTab:CreateToggle({
-    Name = "Fundo Sasuke (atrás da GUI)", CurrentValue = true, Flag = "SasukeBG",
-    Callback = function(v)
-        CFG.SasukeBG = v
-        sasukeImg.ImageTransparency = v and 0.75 or 1
-    end,
-})
-
 VisualTab:CreateSection("Câmera")
 
 VisualTab:CreateToggle({
-    Name = "Câmera Tremendo (L/R)", CurrentValue = false, Flag = "CamShake",
+    Name = "Câmera Tremendo (Reto L/R)", CurrentValue = false, Flag = "CamShake",
     Callback = function(v)
         if v then startCamShake() else stopCamShake() end
     end,
@@ -593,7 +548,7 @@ MoveTab:CreateToggle({
 -- ===== TAB ESP =====
 local ESPTab = Window:CreateTab("ESP", 4483362458)
 ESPTab:CreateToggle({
-    Name = "ESP Players", CurrentValue = false, Flag = "ESP",
+    Name = "ESP Bots (só bots)", CurrentValue = false, Flag = "ESP",
     Callback = function(v) applyESP(v) end,
 })
 
@@ -605,7 +560,6 @@ ExtraTab:CreateButton({
         stopCamShake(); stopWallhopTurn(); stopStrafeTurn()
         stopJumpPower(); applyESP(false); applyAntiLag(false)
         applyFPSBoost(false); applyFOV(false); setSkybox("Nenhum")
-        sasukeImg.ImageTransparency = 0.75
         print("[TB] Reset completo")
     end,
 })
@@ -614,10 +568,9 @@ ExtraTab:CreateButton({
     Name = "Destruir Interface",
     Callback = function()
         Rayfield:Destroy()
-        sasukeGui:Destroy()
         _G.TB_LOADED = false
     end,
 })
 
-Rayfield:Notify({ Title = "TB Duels v1.9", Content = "Sharingan Edition carregado!", Duration = 3 })
-print("✅ TB Duels v1.9 - Sharingan Edition carregado")
+Rayfield:Notify({ Title = "TB Duels v2.0", Content = "Script carregado!", Duration = 3 })
+print("✅ TB Duels v2.0 carregado")
