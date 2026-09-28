@@ -1,6 +1,6 @@
 -- ============================================
--- TD XITERS v2.9 - PARTE 1/2
--- Auto Seguir (Players Fakes) + Flick + Tudo
+-- TD XITERS v3.0 - PARTE 1/2
+-- Personagem Bugado (seta tremendo) + Wall Stick
 -- ============================================
 
 if _G.TDX_LOADED then return end
@@ -107,9 +107,7 @@ TDX.CFG = {
     JumpPowerEnabled = false, JumpPowerValue = 75,
     HitboxEnabled = false, HitboxSize = 10,
     Fullbright = false,
-    AutoFollow = false, FollowSpeed = 30,
-    FollowShake = true, FollowShakeAmp = 30, FollowShakeSpeed = 8,
-    FlickB = false, FlickAmount = 180,
+    BugMove = false, BugMoveSpeed = 15, BugMoveAmp = 0.5,
 }
 TDX.ORIGINAL_FOV = workspace.CurrentCamera.FieldOfView
 local CFG = TDX.CFG
@@ -117,7 +115,7 @@ local CFG = TDX.CFG
 local Window = Rayfield:CreateWindow({
     Name = "TD XITERS",
     LoadingTitle = "TD Xiters",
-    LoadingSubtitle = "v2.9 • Timebomb Duels",
+    LoadingSubtitle = "v3.0 • Timebomb Duels",
     Icon = 4483362458,
     ConfigurationSaving = { Enabled = false },
     KeySystem = false,
@@ -228,7 +226,6 @@ local function startHitbox()
     CFG.HitboxEnabled = true
     hitboxConn = RunService.Heartbeat:Connect(function()
         if not CFG.HitboxEnabled then return end
-        -- Aplica em players + bots (todos os filhos de Players)
         for _, plr in ipairs(Players:GetChildren()) do
             if plr ~= LP and plr.Character then
                 local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
@@ -283,7 +280,38 @@ local function stopWallStick()
     if wallStickConn then wallStickConn:Disconnect() wallStickConn = nil end
 end
 
--- ===== TREMOR L/R =====
+-- ===== PERSONAGEM BUGADO (SETA TREMENDO, CÂMERA PARADA) =====
+local bugMoveConn, bugMoveTimer = nil, 0
+
+local function startBugMove()
+    if bugMoveConn then return end
+    CFG.BugMove = true
+    bugMoveTimer = 0
+
+    bugMoveConn = RunService.Heartbeat:Connect(function(dt)
+        if not CFG.BugMove then return end
+        local char = LP.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+
+        bugMoveTimer = bugMoveTimer + dt
+        -- Tremor em X, Y e Z ao mesmo tempo (seta bugada)
+        local speed = CFG.BugMoveSpeed
+        local amp = CFG.BugMoveAmp
+        local offsetX = math.sin(bugMoveTimer * speed) * amp
+        local offsetY = math.cos(bugMoveTimer * speed * 1.7) * (amp * 0.3)
+        local offsetZ = math.sin(bugMoveTimer * speed * 2.3) * amp
+
+        hrp.CFrame = hrp.CFrame * CFrame.new(offsetX, offsetY, offsetZ)
+    end)
+end
+local function stopBugMove()
+    CFG.BugMove = false
+    if bugMoveConn then bugMoveConn:Disconnect() bugMoveConn = nil end
+end
+
+-- ===== TREMOR L/R (opção extra) =====
 local charShakeConn, charShakeTimer = nil, 0
 local function startCharShake()
     if charShakeConn then return end
@@ -358,90 +386,6 @@ local function stopStrafeTurn()
     strafeCooldown = false
 end
 
--- ===== AUTO SEGUIR BUGADO (USA Players:GetChildren) =====
-local followConn, followShakeTimer = nil, 0
-
-local function startAutoFollow()
-    if followConn then return end
-    CFG.AutoFollow = true
-    followShakeTimer = 0
-
-    followConn = RunService.Heartbeat:Connect(function(dt)
-        if not CFG.AutoFollow then return end
-        local char = LP.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hum or not hrp then return end
-
-        -- 🔑 Procura em TODOS os filhos de Players (pega bots/fakes)
-        local target, minDist = nil, math.huge
-        for _, obj in ipairs(Players:GetChildren()) do
-            if obj ~= LP then
-                local tChar = obj.Character
-                if tChar then
-                    local tHrp = tChar:FindFirstChild("HumanoidRootPart")
-                    if tHrp then
-                        local dist = (hrp.Position - tHrp.Position).Magnitude
-                        if dist < minDist and dist < 200 then
-                            minDist = dist
-                            target = tChar
-                        end
-                    end
-                end
-            end
-        end
-
-        if target then
-            local tHrp = target:FindFirstChild("HumanoidRootPart")
-            if tHrp then
-                local dir = (tHrp.Position - hrp.Position)
-                dir = Vector3.new(dir.X, 0, dir.Z)
-                if dir.Magnitude > 1 then
-                    hum:Move(dir.Unit * CFG.FollowSpeed, false)
-                end
-                if CFG.FollowShake then
-                    followShakeTimer = followShakeTimer + dt
-                    local offsetX = math.sin(followShakeTimer * CFG.FollowShakeSpeed) * (CFG.FollowShakeAmp / 100)
-                    local offsetZ = math.cos(followShakeTimer * CFG.FollowShakeSpeed * 1.3) * (CFG.FollowShakeAmp / 100)
-                    hrp.CFrame = hrp.CFrame * CFrame.new(offsetX, 0, offsetZ)
-                end
-            end
-        end
-    end)
-end
-local function stopAutoFollow()
-    CFG.AutoFollow = false
-    if followConn then followConn:Disconnect() followConn = nil end
-end
-
--- ===== FLICK (GIRA O PERSONAGEM NO PULO) =====
-local flickConn, flickCooldown = nil, false
-local function startFlick()
-    if flickConn then return end
-    CFG.FlickB = true
-    flickConn = RunService.Heartbeat:Connect(function()
-        if not CFG.FlickB then return end
-        local char = LP.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hum or not hrp then return end
-        local state = hum:GetState()
-        if (state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall) and not flickCooldown then
-            flickCooldown = true
-            hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(CFG.FlickAmount), 0)
-            task.wait(0.15)
-            flickCooldown = false
-        end
-    end)
-end
-local function stopFlick()
-    CFG.FlickB = false
-    if flickConn then flickConn:Disconnect() flickConn = nil end
-    flickCooldown = false
-end
-
 -- ===== ESP =====
 local espFolder, espConn
 local function isRealPlayer(character)
@@ -493,7 +437,6 @@ local function applyESP(on)
         espFolder.Name = "TDX_ESP"
         espFolder.Parent = Workspace
 
-        -- Escaneia Players (todos, reais e fakes)
         for _, plr in ipairs(Players:GetChildren()) do
             if plr ~= LP and plr.Character then
                 if isRealPlayer(plr.Character) then
@@ -534,21 +477,19 @@ TDX.startHitbox = startHitbox
 TDX.stopHitbox = stopHitbox
 TDX.startWallStick = startWallStick
 TDX.stopWallStick = stopWallStick
+TDX.startBugMove = startBugMove
+TDX.stopBugMove = stopBugMove
 TDX.startCharShake = startCharShake
 TDX.stopCharShake = stopCharShake
 TDX.startJumpPower = startJumpPower
 TDX.stopJumpPower = stopJumpPower
 TDX.startStrafeTurn = startStrafeTurn
 TDX.stopStrafeTurn = stopStrafeTurn
-TDX.startAutoFollow = startAutoFollow
-TDX.stopAutoFollow = stopAutoFollow
-TDX.startFlick = startFlick
-TDX.stopFlick = stopFlick
 TDX.applyESP = applyESP
 
 print("✅ Parte 1 carregada")
 -- ============================================
--- TD XITERS v2.9 - PARTE 2/2
+-- TD XITERS v3.0 - PARTE 2/2
 -- ============================================
 
 local LP = game:GetService("Players").LocalPlayer
@@ -559,40 +500,36 @@ local Window = TDX.Window
 -- ===== TAB COMBATE =====
 local CombatTab = Window:CreateTab("Combate", 4483362458)
 
-CombatTab:CreateSection("Auto Seguir")
+CombatTab:CreateSection("Personagem Bugado")
 CombatTab:CreateToggle({
-    Name = "Auto Seguir Bugado (Personagem)", CurrentValue = false, Flag = "AutoFollow",
-    Callback = function(v) if v then TDX.startAutoFollow() else TDX.stopAutoFollow() end end
+    Name = "Personagem Bugado (Seta Tremendo)", CurrentValue = false, Flag = "BugMove",
+    Callback = function(v) if v then TDX.startBugMove() else TDX.stopBugMove() end end
 })
 CombatTab:CreateSlider({
-    Name = "Velocidade do Seguir", Range = {10, 80}, Increment = 5, Suffix = "",
-    CurrentValue = 30, Flag = "FollowSpeed",
-    Callback = function(v) CFG.FollowSpeed = v end
-})
-CombatTab:CreateToggle({
-    Name = "Tremor no Personagem", CurrentValue = true, Flag = "FollowShake",
-    Callback = function(v) CFG.FollowShake = v end
+    Name = "Velocidade do Bug", Range = {5, 40}, Increment = 1, Suffix = "x",
+    CurrentValue = 15, Flag = "BugMoveSpeed",
+    Callback = function(v) CFG.BugMoveSpeed = v end
 })
 CombatTab:CreateSlider({
-    Name = "Intensidade do Tremor", Range = {10, 60}, Increment = 1, Suffix = "",
-    CurrentValue = 30, Flag = "FollowShakeAmp",
-    Callback = function(v) CFG.FollowShakeAmp = v end
-})
-CombatTab:CreateSlider({
-    Name = "Velocidade do Tremor", Range = {1, 20}, Increment = 1, Suffix = "x",
-    CurrentValue = 8, Flag = "FollowShakeSpeed",
-    Callback = function(v) CFG.FollowShakeSpeed = v end
+    Name = "Intensidade do Bug", Range = {1, 30}, Increment = 1, Suffix = "",
+    CurrentValue = 50, Flag = "BugMoveAmp",
+    Callback = function(v) CFG.BugMoveAmp = v / 100 end
 })
 
-CombatTab:CreateSection("Flick")
+CombatTab:CreateSection("Tremor Simples (L/R)")
 CombatTab:CreateToggle({
-    Name = "Flick B (Personagem Gira)", CurrentValue = false, Flag = "FlickB",
-    Callback = function(v) if v then TDX.startFlick() else TDX.stopFlick() end end
+    Name = "Tremor no Personagem", CurrentValue = false, Flag = "CharShake",
+    Callback = function(v) if v then TDX.startCharShake() else TDX.stopCharShake() end end
 })
 CombatTab:CreateSlider({
-    Name = "Ângulo do Flick", Range = {90, 360}, Increment = 15, Suffix = "°",
-    CurrentValue = 180, Flag = "FlickAmount",
-    Callback = function(v) CFG.FlickAmount = v end
+    Name = "Velocidade do Tremor", Range = {1, 30}, Increment = 1, Suffix = "x",
+    CurrentValue = 10, Flag = "CharShakeSpeed",
+    Callback = function(v) CFG.CharShakeSpeed = v end
+})
+CombatTab:CreateSlider({
+    Name = "Intensidade do Tremor", Range = {1, 30}, Increment = 1, Suffix = "",
+    CurrentValue = 15, Flag = "CharShakeAmp",
+    Callback = function(v) CFG.CharShakeAmp = v / 100 end
 })
 
 CombatTab:CreateSection("Hitbox")
@@ -647,10 +584,6 @@ VisualTab:CreateDropdown({
     Name = "Skybox", Options = {"Nenhum", "Night", "Purple", "Dragon"}, CurrentOption = {"Nenhum"}, Flag = "Skybox",
     Callback = function(opt) TDX.setSkybox(type(opt) == "table" and opt[1] or opt) end
 })
-VisualTab:CreateSection("Tremor")
-VisualTab:CreateToggle({ Name = "Tremor no Personagem (L/R)", CurrentValue = false, Flag = "CharShake", Callback = function(v) if v then TDX.startCharShake() else TDX.stopCharShake() end end })
-VisualTab:CreateSlider({ Name = "Velocidade do Tremor", Range = {1, 30}, Increment = 1, Suffix = "x", CurrentValue = 10, Flag = "CharShakeSpeed", Callback = function(v) CFG.CharShakeSpeed = v end })
-VisualTab:CreateSlider({ Name = "Intensidade do Tremor", Range = {1, 30}, Increment = 1, Suffix = "", CurrentValue = 15, Flag = "CharShakeAmp", Callback = function(v) CFG.CharShakeAmp = v / 100 end })
 
 -- ===== TAB ESP =====
 local ESPTab = Window:CreateTab("ESP", 4483362458)
@@ -666,7 +599,7 @@ ExtraTab:CreateButton({
     Name = "Resetar Tudo",
     Callback = function()
         TDX.stopStrafeTurn(); TDX.stopWallStick(); TDX.stopCharShake()
-        TDX.stopJumpPower(); TDX.stopHitbox(); TDX.stopAutoFollow(); TDX.stopFlick()
+        TDX.stopJumpPower(); TDX.stopHitbox(); TDX.stopBugMove()
         TDX.applyESP(false); TDX.applyAntiLag(false); TDX.applyFPSBoost(false)
         TDX.applyFOV(false); TDX.applyFullbright(false); TDX.setSkybox("Nenhum")
         print("[TDX] Reset completo")
@@ -696,5 +629,5 @@ ExtraTab:CreateButton({
     end
 })
 
-Rayfield:Notify({ Title = "TD XITERS v2.9", Content = "Script carregado!", Duration = 4 })
-print("✅ TD XITERS v2.9 carregado")
+Rayfield:Notify({ Title = "TD XITERS v3.0", Content = "Script carregado!", Duration = 4 })
+print("✅ TD XITERS v3.0 carregado")
