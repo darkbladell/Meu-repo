@@ -1,6 +1,6 @@
 -- ============================================
--- TD XITERS - v2.4
--- Auto Pass + ESP + Hitbox + Jump + Strafe + Visual
+-- TD XITERS v2.5 - PARTE 1/2
+-- Loading + Rayfield + Funções
 -- ============================================
 
 if _G.TDX_LOADED then return end
@@ -107,8 +107,9 @@ TDX.CFG = {
     AntiLag = false, FPSBoost = false,
     FOVEnabled = false, FOV = 120,
     ESP = false, ESPPlayers = false, Skybox = "Nenhum",
-    CamShake = false, CamShakeSpeed = 8, CamShakeAmp = 15,
     StrafeTurn = false,
+    WallStick = false,
+    CharShake = false, CharShakeSpeed = 10, CharShakeAmp = 0.15,
     JumpPowerEnabled = false, JumpPowerValue = 75,
     HitboxEnabled = false, HitboxSize = 10,
     AutoPass = false, AutoPassDistance = 15,
@@ -120,11 +121,12 @@ local CFG = TDX.CFG
 local Window = Rayfield:CreateWindow({
     Name = "TD XITERS",
     LoadingTitle = "TD Xiters",
-    LoadingSubtitle = "v2.4 • Timebomb Duels",
+    LoadingSubtitle = "v2.5 • Timebomb Duels",
     Icon = 4483362458,
     ConfigurationSaving = { Enabled = false },
     KeySystem = false,
 })
+TDX.Window = Window
 
 -- ===== ANTI-LAG =====
 local function applyAntiLag(on)
@@ -250,9 +252,8 @@ local function setSkybox(name)
     sky.Parent = Lighting
 end
 
--- ===== AUTO PASS BOMB =====
+-- ===== AUTO PASS =====
 local autoPassConn = nil
-
 local function startAutoPass()
     if autoPassConn then return end
     CFG.AutoPass = true
@@ -275,15 +276,13 @@ local function startAutoPass()
         end
     end)
 end
-
 local function stopAutoPass()
     CFG.AutoPass = false
     if autoPassConn then autoPassConn:Disconnect() autoPassConn = nil end
 end
 
--- ===== HITBOX EXPANDER =====
+-- ===== HITBOX =====
 local hitboxConn = nil
-
 local function startHitbox()
     if hitboxConn then return end
     CFG.HitboxEnabled = true
@@ -300,7 +299,6 @@ local function startHitbox()
         end
     end)
 end
-
 local function stopHitbox()
     CFG.HitboxEnabled = false
     if hitboxConn then hitboxConn:Disconnect() hitboxConn = nil end
@@ -312,111 +310,80 @@ local function stopHitbox()
     end
 end
 
--- ===== ESP BOTS + PLAYERS =====
-local espFolder, espConn
-
-local function isRealPlayer(character)
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr.Character == character then return true end
-    end
-    return false
-end
-
-local function createESP(character, isBot)
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
-    local hrp = character.HumanoidRootPart
-    local color = isBot and Color3.fromRGB(255, 100, 0) or Color3.fromRGB(255, 50, 50)
-    local label = isBot and "BOT" or (character.Name or "Player")
-
-    local box = Instance.new("BoxHandleAdornment")
-    box.Name = "TDX_ESP_Box"
-    box.Adornee = hrp
-    box.AlwaysOnTop = true
-    box.Size = Vector3.new(4, 6, 4)
-    box.Transparency = 0.5
-    box.Color3 = color
-    box.Parent = espFolder
-
-    local bb = Instance.new("BillboardGui")
-    bb.Name = "TDX_ESP_Name"
-    bb.Size = UDim2.new(0, 100, 0, 24)
-    bb.StudsOffset = Vector3.new(0, 3.5, 0)
-    bb.AlwaysOnTop = true
-    bb.Adornee = hrp
-    bb.Parent = espFolder
-
-    local nameLabel = Instance.new("TextLabel")
-    nameLabel.Size = UDim2.new(1, 0, 1, 0)
-    nameLabel.BackgroundTransparency = 1
-    nameLabel.Text = label
-    nameLabel.TextColor3 = color
-    nameLabel.TextStrokeTransparency = 0
-    nameLabel.Font = Enum.Font.GothamBold
-    nameLabel.TextSize = 14
-    nameLabel.Parent = bb
-end
-
-local function applyESP(on)
-    CFG.ESP = on
-    if on then
-        if espFolder then espFolder:Destroy() end
-        espFolder = Instance.new("Folder")
-        espFolder.Name = "TDX_ESP"
-        espFolder.Parent = Workspace
-
-        for _, obj in ipairs(Workspace:GetChildren()) do
-            if obj:IsA("Model") and obj:FindFirstChild("Humanoid") then
-                if isRealPlayer(obj) then
-                    if CFG.ESPPlayers then createESP(obj, false) end
-                else
-                    createESP(obj, true)
-                end
+-- ===== WALL STICK =====
+local wallStickConn = nil
+local function startWallStick()
+    if wallStickConn then return end
+    CFG.WallStick = true
+    wallStickConn = RunService.Heartbeat:Connect(function()
+        if not CFG.WallStick then return end
+        local char = LP.Character
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hum or not hrp then return end
+        local rayParams = RaycastParams.new()
+        rayParams.FilterType = Enum.RaycastFilterType.Exclude
+        rayParams.FilterDescendantsInstances = {char}
+        local ray = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 3, rayParams)
+        if ray then
+            local normal = ray.Normal
+            if math.abs(normal.Y) < 0.3 then
+                local forward = -normal
+                local up = Vector3.new(0, 1, 0)
+                local right = forward:Cross(up)
+                up = right:Cross(forward)
+                local wallCF = CFrame.fromMatrix(hrp.Position, right, up)
+                hrp.CFrame = hrp.CFrame:Lerp(wallCF, 0.2)
+                hum.JumpPower = CFG.JumpPowerValue or 75
             end
         end
+    end)
+end
+local function stopWallStick()
+    CFG.WallStick = false
+    if wallStickConn then wallStickConn:Disconnect() wallStickConn = nil end
+end
 
-        if espConn then espConn:Disconnect() end
-        espConn = Workspace.DescendantAdded:Connect(function(d)
-            if not CFG.ESP then return end
-            if d:IsA("Model") and d:FindFirstChild("Humanoid") then
-                task.wait(0.5)
-                if CFG.ESP then
-                    if isRealPlayer(d) then
-                        if CFG.ESPPlayers then createESP(d, false) end
-                    else
-                        createESP(d, true)
-                    end
-                end
-            end
-        end)
-    else
-        if espFolder then espFolder:Destroy() espFolder = nil end
-        if espConn then espConn:Disconnect() espConn = nil end
-    end
+-- ===== TREMOR NO PERSONAGEM =====
+local charShakeConn, charShakeTimer = nil, 0
+local function startCharShake()
+    if charShakeConn then return end
+    CFG.CharShake = true
+    charShakeTimer = 0
+    charShakeConn = RunService.Heartbeat:Connect(function(dt)
+        if not CFG.CharShake then return end
+        local char = LP.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        charShakeTimer = charShakeTimer + dt
+        local offsetX = math.sin(charShakeTimer * CFG.CharShakeSpeed) * CFG.CharShakeAmp
+        local offsetZ = math.cos(charShakeTimer * CFG.CharShakeSpeed * 1.3) * CFG.CharShakeAmp
+        hrp.CFrame = hrp.CFrame * CFrame.new(offsetX, 0, offsetZ)
+    end)
+end
+local function stopCharShake()
+    CFG.CharShake = false
+    if charShakeConn then charShakeConn:Disconnect() charShakeConn = nil end
 end
 
 -- ===== JUMP POWER =====
 local jumpConn, jumpOriginal = nil, 50
-
 local function startJumpPower()
     if jumpConn then return end
     CFG.JumpPowerEnabled = true
     local char = LP.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum then
-        jumpOriginal = hum.JumpPower
-        hum.JumpPower = CFG.JumpPowerValue
-    end
+    if hum then jumpOriginal = hum.JumpPower; hum.JumpPower = CFG.JumpPowerValue end
     jumpConn = RunService.Heartbeat:Connect(function()
         if not CFG.JumpPowerEnabled then return end
         local c = LP.Character
         if not c then return end
         local h = c:FindFirstChildOfClass("Humanoid")
-        if h and h.JumpPower ~= CFG.JumpPowerValue then
-            h.JumpPower = CFG.JumpPowerValue
-        end
+        if h and h.JumpPower ~= CFG.JumpPowerValue then h.JumpPower = CFG.JumpPowerValue end
     end)
 end
-
 local function stopJumpPower()
     CFG.JumpPowerEnabled = false
     if jumpConn then jumpConn:Disconnect() jumpConn = nil end
@@ -425,31 +392,8 @@ local function stopJumpPower()
     if hum then hum.JumpPower = jumpOriginal end
 end
 
--- ===== CÂMERA TREMENDO =====
-local camShakeConn, shakeTimer = nil, 0
-
-local function startCamShake()
-    if camShakeConn then return end
-    CFG.CamShake = true
-    shakeTimer = 0
-    camShakeConn = RunService.RenderStepped:Connect(function(dt)
-        if not CFG.CamShake then return end
-        local cam = workspace.CurrentCamera
-        if not cam then return end
-        shakeTimer = shakeTimer + dt
-        local yaw = math.sin(shakeTimer * CFG.CamShakeSpeed) * math.rad(CFG.CamShakeAmp)
-        cam.CFrame = cam.CFrame * CFrame.Angles(0, yaw, 0)
-    end)
-end
-
-local function stopCamShake()
-    CFG.CamShake = false
-    if camShakeConn then camShakeConn:Disconnect() camShakeConn = nil end
-end
-
 -- ===== STRAFE VIRAR =====
 local strafeTurnConn, strafeCooldown = nil, false
-
 local function startStrafeTurn()
     if strafeTurnConn then return end
     CFG.StrafeTurn = true
@@ -471,55 +415,151 @@ local function startStrafeTurn()
         end
     end)
 end
-
 local function stopStrafeTurn()
     CFG.StrafeTurn = false
     if strafeTurnConn then strafeTurnConn:Disconnect() strafeTurnConn = nil end
     strafeCooldown = false
 end
 
+-- ===== ESP =====
+local espFolder, espConn
+local function isRealPlayer(character)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr.Character == character then return true end
+    end
+    return false
+end
+local function createESP(character, isBot)
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    local hrp = character.HumanoidRootPart
+    local color = isBot and Color3.fromRGB(255, 100, 0) or Color3.fromRGB(255, 50, 50)
+    local label = isBot and "BOT" or (character.Name or "Player")
+    local box = Instance.new("BoxHandleAdornment")
+    box.Name = "TDX_ESP_Box"
+    box.Adornee = hrp
+    box.AlwaysOnTop = true
+    box.Size = Vector3.new(4, 6, 4)
+    box.Transparency = 0.5
+    box.Color3 = color
+    box.Parent = espFolder
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "TDX_ESP_Name"
+    bb.Size = UDim2.new(0, 100, 0, 24)
+    bb.StudsOffset = Vector3.new(0, 3.5, 0)
+    bb.AlwaysOnTop = true
+    bb.Adornee = hrp
+    bb.Parent = espFolder
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, 0, 1, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = label
+    nameLabel.TextColor3 = color
+    nameLabel.TextStrokeTransparency = 0
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.TextSize = 14
+    nameLabel.Parent = bb
+end
+local function applyESP(on)
+    CFG.ESP = on
+    if on then
+        if espFolder then espFolder:Destroy() end
+        espFolder = Instance.new("Folder")
+        espFolder.Name = "TDX_ESP"
+        espFolder.Parent = Workspace
+        for _, obj in ipairs(Workspace:GetChildren()) do
+            if obj:IsA("Model") and obj:FindFirstChild("Humanoid") then
+                if isRealPlayer(obj) then
+                    if CFG.ESPPlayers then createESP(obj, false) end
+                else
+                    createESP(obj, true)
+                end
+            end
+        end
+        if espConn then espConn:Disconnect() end
+        espConn = Workspace.DescendantAdded:Connect(function(d)
+            if not CFG.ESP then return end
+            if d:IsA("Model") and d:FindFirstChild("Humanoid") then
+                task.wait(0.5)
+                if CFG.ESP then
+                    if isRealPlayer(d) then
+                        if CFG.ESPPlayers then createESP(d, false) end
+                    else
+                        createESP(d, true)
+                    end
+                end
+            end
+        end)
+    else
+        if espFolder then espFolder:Destroy() espFolder = nil end
+        if espConn then espConn:Disconnect() espConn = nil end
+    end
+end
+
+-- Guarda funções global
+TDX.startAutoPass = startAutoPass
+TDX.stopAutoPass = stopAutoPass
+TDX.startHitbox = startHitbox
+TDX.stopHitbox = stopHitbox
+TDX.startWallStick = startWallStick
+TDX.stopWallStick = stopWallStick
+TDX.startCharShake = startCharShake
+TDX.stopCharShake = stopCharShake
+TDX.startJumpPower = startJumpPower
+TDX.stopJumpPower = stopJumpPower
+TDX.startStrafeTurn = startStrafeTurn
+TDX.stopStrafeTurn = stopStrafeTurn
+TDX.applyESP = applyESP
+TDX.applyAntiLag = applyAntiLag
+TDX.applyFPSBoost = applyFPSBoost
+TDX.applyFOV = applyFOV
+TDX.applyFullbright = applyFullbright
+TDX.setSkybox = setSkybox
+
+print("✅ Parte 1 carregada")
+-- ============================================
+-- TD XITERS v2.5 - PARTE 2/2
+-- Menus das abas
+-- ============================================
+
+local LP = game:GetService("Players").LocalPlayer
+local TDX = _G.TDX
+local CFG = TDX.CFG
+local Window = TDX.Window
+
 -- ===== TAB COMBATE =====
 local CombatTab = Window:CreateTab("Combate", 4483362458)
 
 CombatTab:CreateSection("Bomba")
-
 CombatTab:CreateToggle({
     Name = "Auto Pass Bomb", CurrentValue = false, Flag = "AutoPass",
-    Callback = function(v)
-        if v then startAutoPass() else stopAutoPass() end
-    end,
+    Callback = function(v) if v then TDX.startAutoPass() else TDX.stopAutoPass() end end
 })
-
 CombatTab:CreateSlider({
     Name = "Distância do Auto Pass", Range = {5, 30}, Increment = 1, Suffix = "studs",
     CurrentValue = 15, Flag = "AutoPassDistance",
-    Callback = function(v) CFG.AutoPassDistance = v end,
+    Callback = function(v) CFG.AutoPassDistance = v end
 })
 
 CombatTab:CreateSection("Hitbox")
-
 CombatTab:CreateToggle({
     Name = "Hitbox Expander", CurrentValue = false, Flag = "HitboxEnabled",
-    Callback = function(v)
-        if v then startHitbox() else stopHitbox() end
-    end,
+    Callback = function(v) if v then TDX.startHitbox() else TDX.stopHitbox() end end
 })
-
 CombatTab:CreateSlider({
     Name = "Tamanho da Hitbox", Range = {5, 30}, Increment = 1, Suffix = "x",
     CurrentValue = 10, Flag = "HitboxSize",
-    Callback = function(v) CFG.HitboxSize = v end,
+    Callback = function(v) CFG.HitboxSize = v end
 })
 
 CombatTab:CreateSection("Movimento")
-
+CombatTab:CreateToggle({
+    Name = "Wall Stick (Grudar na Parede)", CurrentValue = false, Flag = "WallStick",
+    Callback = function(v) if v then TDX.startWallStick() else TDX.stopWallStick() end end
+})
 CombatTab:CreateToggle({
     Name = "Jump Power Boost", CurrentValue = false, Flag = "JumpPowerEnabled",
-    Callback = function(v)
-        if v then startJumpPower() else stopJumpPower() end
-    end,
+    Callback = function(v) if v then TDX.startJumpPower() else TDX.stopJumpPower() end end
 })
-
 CombatTab:CreateSlider({
     Name = "Jump Power", Range = {50, 150}, Increment = 5, Suffix = "",
     CurrentValue = 75, Flag = "JumpPowerValue",
@@ -530,14 +570,11 @@ CombatTab:CreateSlider({
             local hum = char and char:FindFirstChildOfClass("Humanoid")
             if hum then hum.JumpPower = v end
         end
-    end,
+    end
 })
-
 CombatTab:CreateToggle({
     Name = "Strafe Virar (Pra Trás)", CurrentValue = false, Flag = "StrafeTurn",
-    Callback = function(v)
-        if v then startStrafeTurn() else stopStrafeTurn() end
-    end,
+    Callback = function(v) if v then TDX.startStrafeTurn() else TDX.stopStrafeTurn() end end
 })
 
 -- ===== TAB VISUAL =====
@@ -545,59 +582,49 @@ local VisualTab = Window:CreateTab("Visual", 4483362458)
 
 VisualTab:CreateToggle({
     Name = "Anti-Lag Máximo", CurrentValue = false, Flag = "AntiLag",
-    Callback = function(v) applyAntiLag(v) end,
+    Callback = function(v) TDX.applyAntiLag(v) end
 })
-
 VisualTab:CreateToggle({
     Name = "FPS Boost Extra", CurrentValue = false, Flag = "FPSBoost",
-    Callback = function(v) applyFPSBoost(v) end,
+    Callback = function(v) TDX.applyFPSBoost(v) end
 })
-
 VisualTab:CreateToggle({
     Name = "Fullbright (Tudo Claro)", CurrentValue = false, Flag = "Fullbright",
-    Callback = function(v) applyFullbright(v) end,
+    Callback = function(v) TDX.applyFullbright(v) end
 })
-
 VisualTab:CreateToggle({
     Name = "FOV (Tela Aberta)", CurrentValue = false, Flag = "FOVEnabled",
-    Callback = function(v) applyFOV(v) end,
+    Callback = function(v) TDX.applyFOV(v) end
 })
-
 VisualTab:CreateSlider({
     Name = "FOV", Range = {70, 140}, Increment = 1, Suffix = "FOV",
     CurrentValue = 120, Flag = "FOV",
     Callback = function(v)
         CFG.FOV = v
         if CFG.FOVEnabled then workspace.CurrentCamera.FieldOfView = v end
-    end,
+    end
 })
-
 VisualTab:CreateDropdown({
     Name = "Skybox",
     Options = {"Nenhum", "Night", "Purple", "Dragon"},
     CurrentOption = {"Nenhum"}, Flag = "Skybox",
-    Callback = function(opt) setSkybox(type(opt) == "table" and opt[1] or opt) end,
+    Callback = function(opt) TDX.setSkybox(type(opt) == "table" and opt[1] or opt) end
 })
 
-VisualTab:CreateSection("Câmera")
-
+VisualTab:CreateSection("Tremor")
 VisualTab:CreateToggle({
-    Name = "Câmera Tremendo (Reto L/R)", CurrentValue = false, Flag = "CamShake",
-    Callback = function(v)
-        if v then startCamShake() else stopCamShake() end
-    end,
+    Name = "Tremor no Personagem", CurrentValue = false, Flag = "CharShake",
+    Callback = function(v) if v then TDX.startCharShake() else TDX.stopCharShake() end end
 })
-
 VisualTab:CreateSlider({
-    Name = "Velocidade do Tremor", Range = {1, 20}, Increment = 1, Suffix = "x",
-    CurrentValue = 8, Flag = "CamShakeSpeed",
-    Callback = function(v) CFG.CamShakeSpeed = v end,
+    Name = "Velocidade do Tremor", Range = {1, 30}, Increment = 1, Suffix = "x",
+    CurrentValue = 10, Flag = "CharShakeSpeed",
+    Callback = function(v) CFG.CharShakeSpeed = v end
 })
-
 VisualTab:CreateSlider({
-    Name = "Intensidade do Tremor", Range = {5, 45}, Increment = 1, Suffix = "°",
-    CurrentValue = 15, Flag = "CamShakeAmp",
-    Callback = function(v) CFG.CamShakeAmp = v end,
+    Name = "Intensidade do Tremor", Range = {1, 30}, Increment = 1, Suffix = "",
+    CurrentValue = 15, Flag = "CharShakeAmp",
+    Callback = function(v) CFG.CharShakeAmp = v / 100 end
 })
 
 -- ===== TAB ESP =====
@@ -607,30 +634,15 @@ ESPTab:CreateToggle({
     Name = "ESP Bots", CurrentValue = false, Flag = "ESP",
     Callback = function(v)
         CFG.ESP = v
-        applyESP(v)
-    end,
+        TDX.applyESP(v)
+    end
 })
-
 ESPTab:CreateToggle({
     Name = "ESP Players (além dos bots)", CurrentValue = false, Flag = "ESPPlayers",
     Callback = function(v)
         CFG.ESPPlayers = v
-        if CFG.ESP then
-            if espFolder then espFolder:Destroy() end
-            espFolder = Instance.new("Folder")
-            espFolder.Name = "TDX_ESP"
-            espFolder.Parent = Workspace
-            for _, obj in ipairs(Workspace:GetChildren()) do
-                if obj:IsA("Model") and obj:FindFirstChild("Humanoid") then
-                    if isRealPlayer(obj) then
-                        if CFG.ESPPlayers then createESP(obj, false) end
-                    else
-                        createESP(obj, true)
-                    end
-                end
-            end
-        end
-    end,
+        if CFG.ESP then TDX.applyESP(true) end
+    end
 })
 
 -- ===== TAB EXTRAS =====
@@ -639,14 +651,13 @@ local ExtraTab = Window:CreateTab("Extras", 4483362458)
 ExtraTab:CreateButton({
     Name = "Resetar Tudo",
     Callback = function()
-        stopCamShake(); stopStrafeTurn(); stopJumpPower(); stopHitbox()
-        stopAutoPass()
-        applyESP(false); applyAntiLag(false); applyFPSBoost(false)
-        applyFOV(false); applyFullbright(false); setSkybox("Nenhum")
+        TDX.stopStrafeTurn(); TDX.stopWallStick(); TDX.stopCharShake()
+        TDX.stopJumpPower(); TDX.stopHitbox(); TDX.stopAutoPass()
+        TDX.applyESP(false); TDX.applyAntiLag(false); TDX.applyFPSBoost(false)
+        TDX.applyFOV(false); TDX.applyFullbright(false); TDX.setSkybox("Nenhum")
         print("[TDX] Reset completo")
-    end,
+    end
 })
-
 ExtraTab:CreateButton({
     Name = "Ressuscitar (Respawn)",
     Callback = function()
@@ -655,28 +666,26 @@ ExtraTab:CreateButton({
             local hum = char:FindFirstChildOfClass("Humanoid")
             if hum then hum.Health = 0 end
         end
-    end,
+    end
 })
-
 ExtraTab:CreateButton({
     Name = "Rejoin Servidor",
     Callback = function()
         game:GetService("TeleportService"):Teleport(game.PlaceId, LP)
-    end,
+    end
 })
-
 ExtraTab:CreateButton({
     Name = "Destruir Interface",
     Callback = function()
         Rayfield:Destroy()
         _G.TDX_LOADED = false
-    end,
+    end
 })
 
 Rayfield:Notify({
-    Title = "TD XITERS v2.4",
+    Title = "TD XITERS v2.5",
     Content = "Script carregado!",
     Duration = 4,
 })
 
-print("✅ TD XITERS v2.4 carregado")
+print("✅ TD XITERS v2.5 carregado")
