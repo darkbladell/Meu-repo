@@ -1,6 +1,6 @@
 -- ============================================
--- TD XITERS v3.1 - PARTE 1/3
--- Loading + Rayfield + Funções
+-- TD XITERS v3.4 - PARTE 1/2
+-- Loading + FPS Counter + Funções
 -- ============================================
 
 if _G.TDX_LOADED then return end
@@ -102,12 +102,11 @@ TDX.CFG = {
     AntiLag = false, FPSBoost = false,
     FOVEnabled = false, FOV = 120,
     ESP = false, ESPPlayers = false, Skybox = "Nenhum",
-    StrafeTurn = false, WallStick = false,
     JumpPowerEnabled = false, JumpPowerValue = 75,
-    HitboxEnabled = false, HitboxSize = 10,
     Fullbright = false,
     BugMove = false, BugMoveSpeed = 15, BugMoveAmp = 0.5,
-    AutoFarm = false, AutoPass = false, AutoPassDistance = 15,
+    StrafeFlick = false, FlickForce = 50,
+    ShowFPS = true,
 }
 TDX.ORIGINAL_FOV = workspace.CurrentCamera.FieldOfView
 local CFG = TDX.CFG
@@ -115,14 +114,79 @@ local CFG = TDX.CFG
 local Window = Rayfield:CreateWindow({
     Name = "TD XITERS",
     LoadingTitle = "TD Xiters",
-    LoadingSubtitle = "v3.1 • Timebomb Duels",
+    LoadingSubtitle = "v3.4 • Timebomb Duels",
     Icon = 4483362458,
     ConfigurationSaving = { Enabled = false },
     KeySystem = false,
 })
 TDX.Window = Window
 
--- ===== ANTI-LAG =====
+-- ============================================
+-- CONTADOR DE FPS
+-- ============================================
+local fpsGui = Instance.new("ScreenGui")
+fpsGui.Name = "TDX_FPS"
+fpsGui.ResetOnSpawn = false
+fpsGui.IgnoreGuiInset = true
+fpsGui.DisplayOrder = 20
+fpsGui.Parent = LP:WaitForChild("PlayerGui")
+
+local fpsFrame = Instance.new("Frame")
+fpsFrame.Size = UDim2.new(0, 60, 0, 40)
+fpsFrame.Position = UDim2.new(0, 10, 0, 10)
+fpsFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+fpsFrame.BackgroundTransparency = 0.3
+fpsFrame.BorderSizePixel = 0
+fpsFrame.Parent = fpsGui
+
+local fpsCorner = Instance.new("UICorner")
+fpsCorner.CornerRadius = UDim.new(0, 4)
+fpsCorner.Parent = fpsFrame
+
+local fpsStroke = Instance.new("UIStroke")
+fpsStroke.Color = Color3.fromRGB(255, 220, 0)
+fpsStroke.Thickness = 2
+fpsStroke.Parent = fpsFrame
+
+local fpsLabel = Instance.new("TextLabel")
+fpsLabel.Size = UDim2.new(1, 0, 1, 0)
+fpsLabel.BackgroundTransparency = 1
+fpsLabel.Text = "--"
+fpsLabel.TextColor3 = Color3.fromRGB(255, 220, 0)
+fpsLabel.Font = Enum.Font.GothamBold
+fpsLabel.TextSize = 22
+fpsLabel.Parent = fpsFrame
+
+TDX.fpsFrame = fpsFrame
+TDX.fpsGui = fpsGui
+
+local frameCount = 0
+local lastTime = tick()
+
+RunService.RenderStepped:Connect(function()
+    frameCount = frameCount + 1
+    local now = tick()
+    if now - lastTime >= 1 then
+        local fps = frameCount
+        fpsLabel.Text = tostring(fps)
+        if fps >= 50 then
+            fpsStroke.Color = Color3.fromRGB(0, 255, 100)
+            fpsLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
+        elseif fps >= 30 then
+            fpsStroke.Color = Color3.fromRGB(255, 220, 0)
+            fpsLabel.TextColor3 = Color3.fromRGB(255, 220, 0)
+        else
+            fpsStroke.Color = Color3.fromRGB(255, 50, 50)
+            fpsLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+        end
+        frameCount = 0
+        lastTime = now
+    end
+end)
+
+-- ============================================
+-- ANTI-LAG
+-- ============================================
 local function applyAntiLag(on)
     CFG.AntiLag = on
     if on then
@@ -219,154 +283,6 @@ local function setSkybox(name)
     sky.Parent = Lighting
 end
 
--- ===== AUTO PASS BOMB =====
-local autoPassConn = nil
-local function startAutoPass()
-    if autoPassConn then return end
-    CFG.AutoPass = true
-    autoPassConn = RunService.Heartbeat:Connect(function()
-        if not CFG.AutoPass then return end
-        local char = LP.Character
-        if not char then return end
-        local bomb = char:FindFirstChildOfClass("Tool")
-        if not bomb then return end
-        local name = string.lower(bomb.Name)
-        if not (string.find(name, "bomb") or string.find(name, "time") or string.find(name, "pass")) then return end
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LP and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-                local dist = (char.HumanoidRootPart.Position - plr.Character.HumanoidRootPart.Position).Magnitude
-                if dist < CFG.AutoPassDistance then bomb:Activate() break end
-            end
-        end
-    end)
-end
-local function stopAutoPass()
-    CFG.AutoPass = false
-    if autoPassConn then autoPassConn:Disconnect() autoPassConn = nil end
-end
-
--- ===== AUTO FARM =====
-local autoFarmConn = nil
-local function startAutoFarm()
-    if autoFarmConn then return end
-    CFG.AutoFarm = true
-    autoFarmConn = RunService.Heartbeat:Connect(function()
-        if not CFG.AutoFarm then return end
-        local char = LP.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hum or not hrp then return end
-
-        local bomb = char:FindFirstChildOfClass("Tool")
-        local hasBomb = false
-        if bomb then
-            local name = string.lower(bomb.Name)
-            if string.find(name, "bomb") or string.find(name, "time") or string.find(name, "pass") then hasBomb = true end
-        end
-
-        if hasBomb then
-            local target, minDist = nil, math.huge
-            for _, plr in ipairs(Players:GetPlayers()) do
-                if plr ~= LP and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-                    local dist = (hrp.Position - plr.Character.HumanoidRootPart.Position).Magnitude
-                    if dist < minDist then minDist = dist; target = plr end
-                end
-            end
-            if target then
-                local tHrp = target.Character.HumanoidRootPart
-                local dir = Vector3.new((tHrp.Position - hrp.Position).X, 0, (tHrp.Position - hrp.Position).Z)
-                if dir.Magnitude > 1 then hum:Move(dir.Unit * 30, false) end
-            end
-        else
-            local bombHolder = nil
-            for _, plr in ipairs(Players:GetPlayers()) do
-                if plr ~= LP and plr.Character then
-                    local tBomb = plr.Character:FindFirstChildOfClass("Tool")
-                    if tBomb then
-                        local name = string.lower(tBomb.Name)
-                        if string.find(name, "bomb") or string.find(name, "time") or string.find(name, "pass") then
-                            bombHolder = plr; break
-                        end
-                    end
-                end
-            end
-            if bombHolder and bombHolder.Character then
-                local tHrp = bombHolder.Character:FindFirstChild("HumanoidRootPart")
-                if tHrp then
-                    local dir = Vector3.new((hrp.Position - tHrp.Position).X, 0, (hrp.Position - tHrp.Position).Z)
-                    if dir.Magnitude > 1 then hum:Move(dir.Unit * 30, false) end
-                end
-            end
-        end
-    end)
-end
-local function stopAutoFarm()
-    CFG.AutoFarm = false
-    if autoFarmConn then autoFarmConn:Disconnect() autoFarmConn = nil end
-end
-
--- ===== HITBOX =====
-local hitboxConn = nil
-local function startHitbox()
-    if hitboxConn then return end
-    CFG.HitboxEnabled = true
-    hitboxConn = RunService.Heartbeat:Connect(function()
-        if not CFG.HitboxEnabled then return end
-        for _, plr in ipairs(Players:GetChildren()) do
-            if plr ~= LP and plr.Character then
-                local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    hrp.Size = Vector3.new(CFG.HitboxSize, CFG.HitboxSize, CFG.HitboxSize)
-                    hrp.CanCollide = false
-                end
-            end
-        end
-    end)
-end
-local function stopHitbox()
-    CFG.HitboxEnabled = false
-    if hitboxConn then hitboxConn:Disconnect() hitboxConn = nil end
-    for _, plr in ipairs(Players:GetChildren()) do
-        if plr ~= LP and plr.Character then
-            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then hrp.Size = Vector3.new(2, 2, 1) end
-        end
-    end
-end
-
--- ===== WALL STICK =====
-local wallStickConn = nil
-local function startWallStick()
-    if wallStickConn then return end
-    CFG.WallStick = true
-    wallStickConn = RunService.Heartbeat:Connect(function()
-        if not CFG.WallStick then return end
-        local char = LP.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hum or not hrp then return end
-        local rayParams = RaycastParams.new()
-        rayParams.FilterType = Enum.RaycastFilterType.Exclude
-        rayParams.FilterDescendantsInstances = {char}
-        local ray = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 3, rayParams)
-        if ray and math.abs(ray.Normal.Y) < 0.3 then
-            local forward = -ray.Normal
-            local up = Vector3.new(0, 1, 0)
-            local right = forward:Cross(up)
-            up = right:Cross(forward)
-            local wallCF = CFrame.fromMatrix(hrp.Position, right, up)
-            hrp.CFrame = hrp.CFrame:Lerp(wallCF, 0.2)
-            hum.JumpPower = CFG.JumpPowerValue or 75
-        end
-    end)
-end
-local function stopWallStick()
-    CFG.WallStick = false
-    if wallStickConn then wallStickConn:Disconnect() wallStickConn = nil end
-end
-
 -- ===== PERSONAGEM BUGADO =====
 local bugMoveConn, bugMoveTimer = nil, 0
 local function startBugMove()
@@ -393,6 +309,44 @@ local function stopBugMove()
     if bugMoveConn then bugMoveConn:Disconnect() bugMoveConn = nil end
 end
 
+-- ===== STRAFE FLICK (GRUDA NA PAREDE + PULA PROS LADOS) =====
+local strafeFlickConn = nil
+local function startStrafeFlick()
+    if strafeFlickConn then return end
+    CFG.StrafeFlick = true
+    strafeFlickConn = RunService.Heartbeat:Connect(function(dt)
+        if not CFG.StrafeFlick then return end
+        local char = LP.Character
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hum or not hrp then return end
+
+        local rayParams = RaycastParams.new()
+        rayParams.FilterType = Enum.RaycastFilterType.Exclude
+        rayParams.FilterDescendantsInstances = {char}
+
+        local ray = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 3, rayParams)
+
+        if ray and math.abs(ray.Normal.Y) < 0.3 then
+            hrp.Velocity = Vector3.new(hrp.Velocity.X, 0, hrp.Velocity.Z)
+            hrp.CFrame = hrp.CFrame + (-ray.Normal * 0.05)
+
+            local state = hum:GetState()
+            if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall then
+                local right = ray.Normal:Cross(Vector3.new(0, 1, 0)).Unit
+                local side = (math.random() > 0.5) and right or -right
+                hrp.Velocity = hrp.Velocity + side * CFG.FlickForce
+                hrp.Velocity = Vector3.new(hrp.Velocity.X, 30, hrp.Velocity.Z)
+            end
+        end
+    end)
+end
+local function stopStrafeFlick()
+    CFG.StrafeFlick = false
+    if strafeFlickConn then strafeFlickConn:Disconnect() strafeFlickConn = nil end
+end
+
 -- ===== JUMP POWER =====
 local jumpConn, jumpOriginal = nil, 50
 local function startJumpPower()
@@ -415,35 +369,6 @@ local function stopJumpPower()
     local char = LP.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hum then hum.JumpPower = jumpOriginal end
-end
-
--- ===== STRAFE VIRAR =====
-local strafeTurnConn, strafeCooldown = nil, false
-local function startStrafeTurn()
-    if strafeTurnConn then return end
-    CFG.StrafeTurn = true
-    strafeTurnConn = RunService.Heartbeat:Connect(function(dt)
-        if not CFG.StrafeTurn then return end
-        local char = LP.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hum or not hrp then return end
-        local state = hum:GetState()
-        if (state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall) and not strafeCooldown then
-            if hum.MoveDirection.Magnitude > 0.1 then
-                strafeCooldown = true
-                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(180), 0)
-                task.wait(0.4)
-                strafeCooldown = false
-            end
-        end
-    end)
-end
-local function stopStrafeTurn()
-    CFG.StrafeTurn = false
-    if strafeTurnConn then strafeTurnConn:Disconnect() strafeTurnConn = nil end
-    strafeCooldown = false
 end
 
 -- ===== ESP =====
@@ -526,26 +451,18 @@ TDX.applyFPSBoost = applyFPSBoost
 TDX.applyFullbright = applyFullbright
 TDX.applyFOV = applyFOV
 TDX.setSkybox = setSkybox
-TDX.startAutoPass = startAutoPass
-TDX.stopAutoPass = stopAutoPass
-TDX.startAutoFarm = startAutoFarm
-TDX.stopAutoFarm = stopAutoFarm
-TDX.startHitbox = startHitbox
-TDX.stopHitbox = stopHitbox
-TDX.startWallStick = startWallStick
-TDX.stopWallStick = stopWallStick
 TDX.startBugMove = startBugMove
 TDX.stopBugMove = stopBugMove
+TDX.startStrafeFlick = startStrafeFlick
+TDX.stopStrafeFlick = stopStrafeFlick
 TDX.startJumpPower = startJumpPower
 TDX.stopJumpPower = stopJumpPower
-TDX.startStrafeTurn = startStrafeTurn
-TDX.stopStrafeTurn = stopStrafeTurn
 TDX.applyESP = applyESP
 
 print("✅ Parte 1 carregada")
 -- ============================================
--- TD XITERS v3.1 - PARTE 2/3
--- Menus: Combate + Visual + ESP
+-- TD XITERS v3.4 - PARTE 2/2
+-- Menus: Combate + Visual + ESP + Extras
 -- ============================================
 
 local LP = game:GetService("Players").LocalPlayer
@@ -556,19 +473,15 @@ local Window = TDX.Window
 -- ===== TAB COMBATE =====
 local CombatTab = Window:CreateTab("Combate", 4483362458)
 
-CombatTab:CreateSection("Auto Farm")
+CombatTab:CreateSection("Movimento Bugado")
 CombatTab:CreateToggle({
-    Name = "Auto Farm (Passa + Foge)", CurrentValue = false, Flag = "AutoFarm",
-    Callback = function(v) if v then TDX.startAutoFarm() else TDX.stopAutoFarm() end end
-})
-CombatTab:CreateToggle({
-    Name = "Auto Pass Bomb", CurrentValue = false, Flag = "AutoPass",
-    Callback = function(v) if v then TDX.startAutoPass() else TDX.stopAutoPass() end end
+    Name = "Strafe Flick (Gruda + Pula Lados)", CurrentValue = false, Flag = "StrafeFlick",
+    Callback = function(v) if v then TDX.startStrafeFlick() else TDX.stopStrafeFlick() end end
 })
 CombatTab:CreateSlider({
-    Name = "Distância do Auto Pass", Range = {5, 30}, Increment = 1, Suffix = "studs",
-    CurrentValue = 15, Flag = "AutoPassDistance",
-    Callback = function(v) CFG.AutoPassDistance = v end
+    Name = "Força do Flick", Range = {20, 150}, Increment = 5, Suffix = "",
+    CurrentValue = 50, Flag = "FlickForce",
+    Callback = function(v) CFG.FlickForce = v end
 })
 
 CombatTab:CreateSection("Personagem Bugado")
@@ -587,22 +500,7 @@ CombatTab:CreateSlider({
     Callback = function(v) CFG.BugMoveAmp = v / 100 end
 })
 
-CombatTab:CreateSection("Hitbox")
-CombatTab:CreateToggle({
-    Name = "Hitbox Expander", CurrentValue = false, Flag = "HitboxEnabled",
-    Callback = function(v) if v then TDX.startHitbox() else TDX.stopHitbox() end end
-})
-CombatTab:CreateSlider({
-    Name = "Tamanho da Hitbox", Range = {5, 30}, Increment = 1, Suffix = "x",
-    CurrentValue = 10, Flag = "HitboxSize",
-    Callback = function(v) CFG.HitboxSize = v end
-})
-
 CombatTab:CreateSection("Movimento")
-CombatTab:CreateToggle({
-    Name = "Wall Stick (Grudar na Parede)", CurrentValue = false, Flag = "WallStick",
-    Callback = function(v) if v then TDX.startWallStick() else TDX.stopWallStick() end end
-})
 CombatTab:CreateToggle({
     Name = "Jump Power Boost", CurrentValue = false, Flag = "JumpPowerEnabled",
     Callback = function(v) if v then TDX.startJumpPower() else TDX.stopJumpPower() end end
@@ -618,10 +516,6 @@ CombatTab:CreateSlider({
             if hum then hum.JumpPower = v end
         end
     end
-})
-CombatTab:CreateToggle({
-    Name = "Strafe Virar (Pra Trás)", CurrentValue = false, Flag = "StrafeTurn",
-    Callback = function(v) if v then TDX.startStrafeTurn() else TDX.stopStrafeTurn() end end
 })
 
 -- ===== TAB VISUAL =====
@@ -639,6 +533,11 @@ VisualTab:CreateDropdown({
     Name = "Skybox", Options = {"Nenhum", "Night", "Purple", "Dragon"}, CurrentOption = {"Nenhum"}, Flag = "Skybox",
     Callback = function(opt) TDX.setSkybox(type(opt) == "table" and opt[1] or opt) end
 })
+VisualTab:CreateSection("Interface")
+VisualTab:CreateToggle({
+    Name = "Mostrar FPS", CurrentValue = true, Flag = "ShowFPS",
+    Callback = function(v) TDX.fpsFrame.Visible = v end
+})
 
 -- ===== TAB ESP =====
 local ESPTab = Window:CreateTab("ESP", 4483362458)
@@ -648,4 +547,41 @@ ESPTab:CreateToggle({
     Callback = function(v) CFG.ESPPlayers = v; if CFG.ESP then TDX.applyESP(true) end end
 })
 
-print("✅ Parte 2 carregada")
+-- ===== TAB EXTRAS =====
+local ExtraTab = Window:CreateTab("Extras", 4483362458)
+ExtraTab:CreateButton({
+    Name = "Resetar Tudo",
+    Callback = function()
+        TDX.stopStrafeFlick(); TDX.stopBugMove(); TDX.stopJumpPower()
+        TDX.applyESP(false); TDX.applyAntiLag(false); TDX.applyFPSBoost(false)
+        TDX.applyFOV(false); TDX.applyFullbright(false); TDX.setSkybox("Nenhum")
+        print("[TDX] Reset completo")
+    end
+})
+ExtraTab:CreateButton({
+    Name = "Ressuscitar (Respawn)",
+    Callback = function()
+        local char = LP.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.Health = 0 end
+        end
+    end
+})
+ExtraTab:CreateButton({
+    Name = "Rejoin Servidor",
+    Callback = function()
+        game:GetService("TeleportService"):Teleport(game.PlaceId, LP)
+    end
+})
+ExtraTab:CreateButton({
+    Name = "Destruir Interface",
+    Callback = function()
+        Rayfield:Destroy()
+        TDX.fpsGui:Destroy()
+        _G.TDX_LOADED = false
+    end
+})
+
+Rayfield:Notify({ Title = "TD XITERS v3.4", Content = "Script carregado!", Duration = 4 })
+print("✅ TD XITERS v3.4 carregado")
