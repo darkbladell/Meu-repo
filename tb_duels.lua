@@ -1,6 +1,6 @@
 -- ============================================
--- TD XITERS v2.8 - PARTE 1/2
--- Funções base + Auto Seguir (Personagem) + Flick
+-- TD XITERS v2.9 - PARTE 1/2
+-- Auto Seguir (Players Fakes) + Flick + Tudo
 -- ============================================
 
 if _G.TDX_LOADED then return end
@@ -117,7 +117,7 @@ local CFG = TDX.CFG
 local Window = Rayfield:CreateWindow({
     Name = "TD XITERS",
     LoadingTitle = "TD Xiters",
-    LoadingSubtitle = "v2.8 • Timebomb Duels",
+    LoadingSubtitle = "v2.9 • Timebomb Duels",
     Icon = 4483362458,
     ConfigurationSaving = { Enabled = false },
     KeySystem = false,
@@ -228,7 +228,8 @@ local function startHitbox()
     CFG.HitboxEnabled = true
     hitboxConn = RunService.Heartbeat:Connect(function()
         if not CFG.HitboxEnabled then return end
-        for _, plr in ipairs(Players:GetPlayers()) do
+        -- Aplica em players + bots (todos os filhos de Players)
+        for _, plr in ipairs(Players:GetChildren()) do
             if plr ~= LP and plr.Character then
                 local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
                 if hrp then
@@ -242,7 +243,7 @@ end
 local function stopHitbox()
     CFG.HitboxEnabled = false
     if hitboxConn then hitboxConn:Disconnect() hitboxConn = nil end
-    for _, plr in ipairs(Players:GetPlayers()) do
+    for _, plr in ipairs(Players:GetChildren()) do
         if plr ~= LP and plr.Character then
             local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
             if hrp then hrp.Size = Vector3.new(2, 2, 1) end
@@ -357,7 +358,7 @@ local function stopStrafeTurn()
     strafeCooldown = false
 end
 
--- ===== AUTO SEGUIR BUGADO (PERSONAGEM TREME, CÂMERA PARADA) =====
+-- ===== AUTO SEGUIR BUGADO (USA Players:GetChildren) =====
 local followConn, followShakeTimer = nil, 0
 
 local function startAutoFollow()
@@ -373,15 +374,19 @@ local function startAutoFollow()
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hum or not hrp then return end
 
+        -- 🔑 Procura em TODOS os filhos de Players (pega bots/fakes)
         local target, minDist = nil, math.huge
-        for _, obj in ipairs(Workspace:GetChildren()) do
-            if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") and obj ~= char then
-                local tHrp = obj:FindFirstChild("HumanoidRootPart")
-                if tHrp then
-                    local dist = (hrp.Position - tHrp.Position).Magnitude
-                    if dist < minDist and dist < 200 then
-                        minDist = dist
-                        target = obj
+        for _, obj in ipairs(Players:GetChildren()) do
+            if obj ~= LP then
+                local tChar = obj.Character
+                if tChar then
+                    local tHrp = tChar:FindFirstChild("HumanoidRootPart")
+                    if tHrp then
+                        local dist = (hrp.Position - tHrp.Position).Magnitude
+                        if dist < minDist and dist < 200 then
+                            minDist = dist
+                            target = tChar
+                        end
                     end
                 end
             end
@@ -395,7 +400,6 @@ local function startAutoFollow()
                 if dir.Magnitude > 1 then
                     hum:Move(dir.Unit * CFG.FollowSpeed, false)
                 end
-                -- Tremor no PERSONAGEM (câmera intacta)
                 if CFG.FollowShake then
                     followShakeTimer = followShakeTimer + dt
                     local offsetX = math.sin(followShakeTimer * CFG.FollowShakeSpeed) * (CFG.FollowShakeAmp / 100)
@@ -411,9 +415,8 @@ local function stopAutoFollow()
     if followConn then followConn:Disconnect() followConn = nil end
 end
 
--- ===== FLICK (PERSONAGEM GIRA NO PULO) =====
+-- ===== FLICK (GIRA O PERSONAGEM NO PULO) =====
 local flickConn, flickCooldown = nil, false
-
 local function startFlick()
     if flickConn then return end
     CFG.FlickB = true
@@ -427,7 +430,6 @@ local function startFlick()
         local state = hum:GetState()
         if (state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall) and not flickCooldown then
             flickCooldown = true
-            -- Gira o PERSONAGEM (não a câmera)
             hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(CFG.FlickAmount), 0)
             task.wait(0.15)
             flickCooldown = false
@@ -490,28 +492,31 @@ local function applyESP(on)
         espFolder = Instance.new("Folder")
         espFolder.Name = "TDX_ESP"
         espFolder.Parent = Workspace
-        for _, obj in ipairs(Workspace:GetChildren()) do
-            if obj:IsA("Model") and obj:FindFirstChild("Humanoid") then
-                if isRealPlayer(obj) then
-                    if CFG.ESPPlayers then createESP(obj, false) end
+
+        -- Escaneia Players (todos, reais e fakes)
+        for _, plr in ipairs(Players:GetChildren()) do
+            if plr ~= LP and plr.Character then
+                if isRealPlayer(plr.Character) then
+                    if CFG.ESPPlayers then createESP(plr.Character, false) end
                 else
-                    createESP(obj, true)
+                    createESP(plr.Character, true)
                 end
             end
         end
+
         if espConn then espConn:Disconnect() end
-        espConn = Workspace.DescendantAdded:Connect(function(d)
+        espConn = Players.ChildAdded:Connect(function(obj)
             if not CFG.ESP then return end
-            if d:IsA("Model") and d:FindFirstChild("Humanoid") then
+            obj.CharacterAdded:Connect(function(char)
                 task.wait(0.5)
-                if CFG.ESP then
-                    if isRealPlayer(d) then
-                        if CFG.ESPPlayers then createESP(d, false) end
+                if CFG.ESP and char ~= LP.Character then
+                    if isRealPlayer(char) then
+                        if CFG.ESPPlayers then createESP(char, false) end
                     else
-                        createESP(d, true)
+                        createESP(char, true)
                     end
                 end
-            end
+            end)
         end)
     else
         if espFolder then espFolder:Destroy() espFolder = nil end
@@ -519,7 +524,7 @@ local function applyESP(on)
     end
 end
 
--- Guarda funções global
+-- Guarda global
 TDX.applyAntiLag = applyAntiLag
 TDX.applyFPSBoost = applyFPSBoost
 TDX.applyFullbright = applyFullbright
@@ -543,8 +548,7 @@ TDX.applyESP = applyESP
 
 print("✅ Parte 1 carregada")
 -- ============================================
--- TD XITERS v2.8 - PARTE 2/2
--- Menus das abas
+-- TD XITERS v2.9 - PARTE 2/2
 -- ============================================
 
 local LP = game:GetService("Players").LocalPlayer
@@ -582,7 +586,7 @@ CombatTab:CreateSlider({
 
 CombatTab:CreateSection("Flick")
 CombatTab:CreateToggle({
-    Name = "Flick B (Personagem Gira no Pulo)", CurrentValue = false, Flag = "FlickB",
+    Name = "Flick B (Personagem Gira)", CurrentValue = false, Flag = "FlickB",
     Callback = function(v) if v then TDX.startFlick() else TDX.stopFlick() end end
 })
 CombatTab:CreateSlider({
@@ -692,5 +696,5 @@ ExtraTab:CreateButton({
     end
 })
 
-Rayfield:Notify({ Title = "TD XITERS v2.8", Content = "Script carregado!", Duration = 4 })
-print("✅ TD XITERS v2.8 carregado")
+Rayfield:Notify({ Title = "TD XITERS v2.9", Content = "Script carregado!", Duration = 4 })
+print("✅ TD XITERS v2.9 carregado")
