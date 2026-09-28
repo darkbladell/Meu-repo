@@ -1,6 +1,6 @@
 -- ============================================
--- TD XITERS v3.0 - PARTE 1/2
--- Personagem Bugado (seta tremendo) + Wall Stick
+-- TD XITERS v3.1 - PARTE 1/3
+-- Loading + Rayfield + Funções
 -- ============================================
 
 if _G.TDX_LOADED then return end
@@ -103,11 +103,11 @@ TDX.CFG = {
     FOVEnabled = false, FOV = 120,
     ESP = false, ESPPlayers = false, Skybox = "Nenhum",
     StrafeTurn = false, WallStick = false,
-    CharShake = false, CharShakeSpeed = 10, CharShakeAmp = 0.15,
     JumpPowerEnabled = false, JumpPowerValue = 75,
     HitboxEnabled = false, HitboxSize = 10,
     Fullbright = false,
     BugMove = false, BugMoveSpeed = 15, BugMoveAmp = 0.5,
+    AutoFarm = false, AutoPass = false, AutoPassDistance = 15,
 }
 TDX.ORIGINAL_FOV = workspace.CurrentCamera.FieldOfView
 local CFG = TDX.CFG
@@ -115,7 +115,7 @@ local CFG = TDX.CFG
 local Window = Rayfield:CreateWindow({
     Name = "TD XITERS",
     LoadingTitle = "TD Xiters",
-    LoadingSubtitle = "v3.0 • Timebomb Duels",
+    LoadingSubtitle = "v3.1 • Timebomb Duels",
     Icon = 4483362458,
     ConfigurationSaving = { Enabled = false },
     KeySystem = false,
@@ -219,6 +219,93 @@ local function setSkybox(name)
     sky.Parent = Lighting
 end
 
+-- ===== AUTO PASS BOMB =====
+local autoPassConn = nil
+local function startAutoPass()
+    if autoPassConn then return end
+    CFG.AutoPass = true
+    autoPassConn = RunService.Heartbeat:Connect(function()
+        if not CFG.AutoPass then return end
+        local char = LP.Character
+        if not char then return end
+        local bomb = char:FindFirstChildOfClass("Tool")
+        if not bomb then return end
+        local name = string.lower(bomb.Name)
+        if not (string.find(name, "bomb") or string.find(name, "time") or string.find(name, "pass")) then return end
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LP and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                local dist = (char.HumanoidRootPart.Position - plr.Character.HumanoidRootPart.Position).Magnitude
+                if dist < CFG.AutoPassDistance then bomb:Activate() break end
+            end
+        end
+    end)
+end
+local function stopAutoPass()
+    CFG.AutoPass = false
+    if autoPassConn then autoPassConn:Disconnect() autoPassConn = nil end
+end
+
+-- ===== AUTO FARM =====
+local autoFarmConn = nil
+local function startAutoFarm()
+    if autoFarmConn then return end
+    CFG.AutoFarm = true
+    autoFarmConn = RunService.Heartbeat:Connect(function()
+        if not CFG.AutoFarm then return end
+        local char = LP.Character
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hum or not hrp then return end
+
+        local bomb = char:FindFirstChildOfClass("Tool")
+        local hasBomb = false
+        if bomb then
+            local name = string.lower(bomb.Name)
+            if string.find(name, "bomb") or string.find(name, "time") or string.find(name, "pass") then hasBomb = true end
+        end
+
+        if hasBomb then
+            local target, minDist = nil, math.huge
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LP and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                    local dist = (hrp.Position - plr.Character.HumanoidRootPart.Position).Magnitude
+                    if dist < minDist then minDist = dist; target = plr end
+                end
+            end
+            if target then
+                local tHrp = target.Character.HumanoidRootPart
+                local dir = Vector3.new((tHrp.Position - hrp.Position).X, 0, (tHrp.Position - hrp.Position).Z)
+                if dir.Magnitude > 1 then hum:Move(dir.Unit * 30, false) end
+            end
+        else
+            local bombHolder = nil
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LP and plr.Character then
+                    local tBomb = plr.Character:FindFirstChildOfClass("Tool")
+                    if tBomb then
+                        local name = string.lower(tBomb.Name)
+                        if string.find(name, "bomb") or string.find(name, "time") or string.find(name, "pass") then
+                            bombHolder = plr; break
+                        end
+                    end
+                end
+            end
+            if bombHolder and bombHolder.Character then
+                local tHrp = bombHolder.Character:FindFirstChild("HumanoidRootPart")
+                if tHrp then
+                    local dir = Vector3.new((hrp.Position - tHrp.Position).X, 0, (hrp.Position - tHrp.Position).Z)
+                    if dir.Magnitude > 1 then hum:Move(dir.Unit * 30, false) end
+                end
+            end
+        end
+    end)
+end
+local function stopAutoFarm()
+    CFG.AutoFarm = false
+    if autoFarmConn then autoFarmConn:Disconnect() autoFarmConn = nil end
+end
+
 -- ===== HITBOX =====
 local hitboxConn = nil
 local function startHitbox()
@@ -280,57 +367,30 @@ local function stopWallStick()
     if wallStickConn then wallStickConn:Disconnect() wallStickConn = nil end
 end
 
--- ===== PERSONAGEM BUGADO (SETA TREMENDO, CÂMERA PARADA) =====
+-- ===== PERSONAGEM BUGADO =====
 local bugMoveConn, bugMoveTimer = nil, 0
-
 local function startBugMove()
     if bugMoveConn then return end
     CFG.BugMove = true
     bugMoveTimer = 0
-
     bugMoveConn = RunService.Heartbeat:Connect(function(dt)
         if not CFG.BugMove then return end
         local char = LP.Character
         if not char then return end
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
-
         bugMoveTimer = bugMoveTimer + dt
-        -- Tremor em X, Y e Z ao mesmo tempo (seta bugada)
         local speed = CFG.BugMoveSpeed
         local amp = CFG.BugMoveAmp
         local offsetX = math.sin(bugMoveTimer * speed) * amp
         local offsetY = math.cos(bugMoveTimer * speed * 1.7) * (amp * 0.3)
         local offsetZ = math.sin(bugMoveTimer * speed * 2.3) * amp
-
         hrp.CFrame = hrp.CFrame * CFrame.new(offsetX, offsetY, offsetZ)
     end)
 end
 local function stopBugMove()
     CFG.BugMove = false
     if bugMoveConn then bugMoveConn:Disconnect() bugMoveConn = nil end
-end
-
--- ===== TREMOR L/R (opção extra) =====
-local charShakeConn, charShakeTimer = nil, 0
-local function startCharShake()
-    if charShakeConn then return end
-    CFG.CharShake = true
-    charShakeTimer = 0
-    charShakeConn = RunService.Heartbeat:Connect(function(dt)
-        if not CFG.CharShake then return end
-        local char = LP.Character
-        if not char then return end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-        charShakeTimer = charShakeTimer + dt
-        local offsetX = math.sin(charShakeTimer * CFG.CharShakeSpeed) * CFG.CharShakeAmp
-        hrp.CFrame = hrp.CFrame * CFrame.new(offsetX, 0, 0)
-    end)
-end
-local function stopCharShake()
-    CFG.CharShake = false
-    if charShakeConn then charShakeConn:Disconnect() charShakeConn = nil end
 end
 
 -- ===== JUMP POWER =====
@@ -394,13 +454,11 @@ local function isRealPlayer(character)
     end
     return false
 end
-
 local function createESP(character, isBot)
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
     local hrp = character.HumanoidRootPart
     local color = isBot and Color3.fromRGB(255, 100, 0) or Color3.fromRGB(255, 50, 50)
     local label = isBot and "BOT" or (character.Name or "Player")
-
     local box = Instance.new("BoxHandleAdornment")
     box.Name = "TDX_ESP_Box"
     box.Adornee = hrp
@@ -409,7 +467,6 @@ local function createESP(character, isBot)
     box.Transparency = 0.5
     box.Color3 = color
     box.Parent = espFolder
-
     local bb = Instance.new("BillboardGui")
     bb.Name = "TDX_ESP_Name"
     bb.Size = UDim2.new(0, 100, 0, 24)
@@ -417,7 +474,6 @@ local function createESP(character, isBot)
     bb.AlwaysOnTop = true
     bb.Adornee = hrp
     bb.Parent = espFolder
-
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Size = UDim2.new(1, 0, 1, 0)
     nameLabel.BackgroundTransparency = 1
@@ -428,7 +484,6 @@ local function createESP(character, isBot)
     nameLabel.TextSize = 14
     nameLabel.Parent = bb
 end
-
 local function applyESP(on)
     CFG.ESP = on
     if on then
@@ -436,7 +491,6 @@ local function applyESP(on)
         espFolder = Instance.new("Folder")
         espFolder.Name = "TDX_ESP"
         espFolder.Parent = Workspace
-
         for _, plr in ipairs(Players:GetChildren()) do
             if plr ~= LP and plr.Character then
                 if isRealPlayer(plr.Character) then
@@ -446,7 +500,6 @@ local function applyESP(on)
                 end
             end
         end
-
         if espConn then espConn:Disconnect() end
         espConn = Players.ChildAdded:Connect(function(obj)
             if not CFG.ESP then return end
@@ -473,14 +526,16 @@ TDX.applyFPSBoost = applyFPSBoost
 TDX.applyFullbright = applyFullbright
 TDX.applyFOV = applyFOV
 TDX.setSkybox = setSkybox
+TDX.startAutoPass = startAutoPass
+TDX.stopAutoPass = stopAutoPass
+TDX.startAutoFarm = startAutoFarm
+TDX.stopAutoFarm = stopAutoFarm
 TDX.startHitbox = startHitbox
 TDX.stopHitbox = stopHitbox
 TDX.startWallStick = startWallStick
 TDX.stopWallStick = stopWallStick
 TDX.startBugMove = startBugMove
 TDX.stopBugMove = stopBugMove
-TDX.startCharShake = startCharShake
-TDX.stopCharShake = stopCharShake
 TDX.startJumpPower = startJumpPower
 TDX.stopJumpPower = stopJumpPower
 TDX.startStrafeTurn = startStrafeTurn
@@ -489,7 +544,8 @@ TDX.applyESP = applyESP
 
 print("✅ Parte 1 carregada")
 -- ============================================
--- TD XITERS v3.0 - PARTE 2/2
+-- TD XITERS v3.1 - PARTE 2/3
+-- Menus: Combate + Visual + ESP
 -- ============================================
 
 local LP = game:GetService("Players").LocalPlayer
@@ -500,9 +556,24 @@ local Window = TDX.Window
 -- ===== TAB COMBATE =====
 local CombatTab = Window:CreateTab("Combate", 4483362458)
 
+CombatTab:CreateSection("Auto Farm")
+CombatTab:CreateToggle({
+    Name = "Auto Farm (Passa + Foge)", CurrentValue = false, Flag = "AutoFarm",
+    Callback = function(v) if v then TDX.startAutoFarm() else TDX.stopAutoFarm() end end
+})
+CombatTab:CreateToggle({
+    Name = "Auto Pass Bomb", CurrentValue = false, Flag = "AutoPass",
+    Callback = function(v) if v then TDX.startAutoPass() else TDX.stopAutoPass() end end
+})
+CombatTab:CreateSlider({
+    Name = "Distância do Auto Pass", Range = {5, 30}, Increment = 1, Suffix = "studs",
+    CurrentValue = 15, Flag = "AutoPassDistance",
+    Callback = function(v) CFG.AutoPassDistance = v end
+})
+
 CombatTab:CreateSection("Personagem Bugado")
 CombatTab:CreateToggle({
-    Name = "Personagem Bugado (Seta Tremendo)", CurrentValue = false, Flag = "BugMove",
+    Name = "Personagem Bugado (Seta)", CurrentValue = false, Flag = "BugMove",
     Callback = function(v) if v then TDX.startBugMove() else TDX.stopBugMove() end end
 })
 CombatTab:CreateSlider({
@@ -514,22 +585,6 @@ CombatTab:CreateSlider({
     Name = "Intensidade do Bug", Range = {1, 30}, Increment = 1, Suffix = "",
     CurrentValue = 50, Flag = "BugMoveAmp",
     Callback = function(v) CFG.BugMoveAmp = v / 100 end
-})
-
-CombatTab:CreateSection("Tremor Simples (L/R)")
-CombatTab:CreateToggle({
-    Name = "Tremor no Personagem", CurrentValue = false, Flag = "CharShake",
-    Callback = function(v) if v then TDX.startCharShake() else TDX.stopCharShake() end end
-})
-CombatTab:CreateSlider({
-    Name = "Velocidade do Tremor", Range = {1, 30}, Increment = 1, Suffix = "x",
-    CurrentValue = 10, Flag = "CharShakeSpeed",
-    Callback = function(v) CFG.CharShakeSpeed = v end
-})
-CombatTab:CreateSlider({
-    Name = "Intensidade do Tremor", Range = {1, 30}, Increment = 1, Suffix = "",
-    CurrentValue = 15, Flag = "CharShakeAmp",
-    Callback = function(v) CFG.CharShakeAmp = v / 100 end
 })
 
 CombatTab:CreateSection("Hitbox")
@@ -593,41 +648,4 @@ ESPTab:CreateToggle({
     Callback = function(v) CFG.ESPPlayers = v; if CFG.ESP then TDX.applyESP(true) end end
 })
 
--- ===== TAB EXTRAS =====
-local ExtraTab = Window:CreateTab("Extras", 4483362458)
-ExtraTab:CreateButton({
-    Name = "Resetar Tudo",
-    Callback = function()
-        TDX.stopStrafeTurn(); TDX.stopWallStick(); TDX.stopCharShake()
-        TDX.stopJumpPower(); TDX.stopHitbox(); TDX.stopBugMove()
-        TDX.applyESP(false); TDX.applyAntiLag(false); TDX.applyFPSBoost(false)
-        TDX.applyFOV(false); TDX.applyFullbright(false); TDX.setSkybox("Nenhum")
-        print("[TDX] Reset completo")
-    end
-})
-ExtraTab:CreateButton({
-    Name = "Ressuscitar (Respawn)",
-    Callback = function()
-        local char = LP.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then hum.Health = 0 end
-        end
-    end
-})
-ExtraTab:CreateButton({
-    Name = "Rejoin Servidor",
-    Callback = function()
-        game:GetService("TeleportService"):Teleport(game.PlaceId, LP)
-    end
-})
-ExtraTab:CreateButton({
-    Name = "Destruir Interface",
-    Callback = function()
-        Rayfield:Destroy()
-        _G.TDX_LOADED = false
-    end
-})
-
-Rayfield:Notify({ Title = "TD XITERS v3.0", Content = "Script carregado!", Duration = 4 })
-print("✅ TD XITERS v3.0 carregado")
+print("✅ Parte 2 carregada")
