@@ -1,6 +1,6 @@
 -- ============================================
--- TD XITERS v3.6 - PARTE 1/2
--- Loading + FPS Cap + FPS Counter + Funções
+-- TD XITERS v3.7 - PARTE 1/2
+-- Loading + Funções + Bug da Câmera
 -- ============================================
 
 if _G.TDX_LOADED then return end
@@ -107,24 +107,35 @@ TDX.CFG = {
     Fullbright = false,
     BugMove = false, BugMoveSpeed = 15, BugMoveAmp = 0.5,
     StrafeTurn = false,
+    CamBug = false,
     ShowFPS = true,
     FPSCapEnabled = false, FPSCapValue = 60,
 }
 TDX.ORIGINAL_FOV = workspace.CurrentCamera.FieldOfView
+TDX.Rayfield = Rayfield
 local CFG = TDX.CFG
 
 local Window = Rayfield:CreateWindow({
     Name = "TD XITERS",
     LoadingTitle = "TD Xiters",
-    LoadingSubtitle = "v3.6 • Timebomb Duels",
+    LoadingSubtitle = "v3.7 • Timebomb Duels",
     Icon = 4483362458,
     ConfigurationSaving = { Enabled = false },
     KeySystem = false,
 })
 TDX.Window = Window
 
+-- Helper de notificação
+local function notify(title, content)
+    Rayfield:Notify({
+        Title = title or "TD XITERS",
+        Content = content or "",
+        Duration = 2
+    })
+end
+
 -- ============================================
--- FPS CAP (LIMITADOR DE FPS)
+-- FPS CAP
 -- ============================================
 local fpsCapConn = nil
 
@@ -145,7 +156,7 @@ local function stopFPSCap()
 end
 
 -- ============================================
--- CONTADOR DE FPS (SÓ NÚMEROS, ARRASTÁVEL)
+-- FPS COUNTER (ARRASTÁVEL)
 -- ============================================
 local fpsGui = Instance.new("ScreenGui")
 fpsGui.Name = "TDX_FPS"
@@ -214,8 +225,10 @@ fpsBtn.MouseButton1Click:Connect(function()
         locked = not locked
         if locked then
             fpsLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+            notify("FPS Counter", "Travado no lugar")
         else
             fpsLabel.TextColor3 = Color3.fromRGB(255, 220, 0)
+            notify("FPS Counter", "Liberado")
         end
     end
     lastClick = now
@@ -343,6 +356,41 @@ local function setSkybox(name)
     sky.SkyboxBk, sky.SkyboxDn, sky.SkyboxFt = data.Bk, data.Dn, data.Ft
     sky.SkyboxLf, sky.SkyboxRt, sky.SkyboxUp = data.Lf, data.Rt, data.Up
     sky.Parent = Lighting
+end
+
+-- ============================================
+-- BUG DA CÂMERA (GRUDA NO TORSO)
+-- ============================================
+local camBugConn = nil
+
+local function startCamBug()
+    if camBugConn then return end
+    CFG.CamBug = true
+
+    camBugConn = RunService.RenderStepped:Connect(function()
+        if not CFG.CamBug then return end
+        local char = LP.Character
+        if not char then return end
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+
+        local torso = char:FindFirstChild("Torso")
+            or char:FindFirstChild("UpperTorso")
+            or char:FindFirstChild("HumanoidRootPart")
+        if not torso then return end
+
+        -- Fixa a câmera atrás do torso
+        local offset = torso.CFrame * CFrame.new(0, 1.5, 8)
+        cam.CFrame = CFrame.new(offset.Position, torso.Position + torso.CFrame.LookVector * 5)
+        cam.CameraType = Enum.CameraType.Scriptable
+    end)
+end
+
+local function stopCamBug()
+    CFG.CamBug = false
+    if camBugConn then camBugConn:Disconnect() camBugConn = nil end
+    local cam = workspace.CurrentCamera
+    if cam then cam.CameraType = Enum.CameraType.Custom end
 end
 
 -- ===== PERSONAGEM BUGADO =====
@@ -513,17 +561,21 @@ TDX.stopJumpPower = stopJumpPower
 TDX.applyESP = applyESP
 TDX.startFPSCap = startFPSCap
 TDX.stopFPSCap = stopFPSCap
+TDX.startCamBug = startCamBug
+TDX.stopCamBug = stopCamBug
+TDX.notify = notify
 
 print("✅ Parte 1 carregada")
 -- ============================================
--- TD XITERS v3.6 - PARTE 2/2
--- Menus: Combate + Visual + ESP + Extras
+-- TD XITERS v3.7 - PARTE 2/2
+-- Menus com notificações
 -- ============================================
 
 local LP = game:GetService("Players").LocalPlayer
 local TDX = _G.TDX
 local CFG = TDX.CFG
 local Window = TDX.Window
+local notify = TDX.notify
 
 -- ===== TAB COMBATE =====
 local CombatTab = Window:CreateTab("Combate", 4483362458)
@@ -531,13 +583,19 @@ local CombatTab = Window:CreateTab("Combate", 4483362458)
 CombatTab:CreateSection("Movimento Bugado")
 CombatTab:CreateToggle({
     Name = "Strafe Virar (Gira no Pulo)", CurrentValue = false, Flag = "StrafeTurn",
-    Callback = function(v) if v then TDX.startStrafeTurn() else TDX.stopStrafeTurn() end end
+    Callback = function(v)
+        if v then TDX.startStrafeTurn() else TDX.stopStrafeTurn() end
+        notify("Strafe Virar", v and "Ativado" or "Desativado")
+    end
 })
 
 CombatTab:CreateSection("Personagem Bugado")
 CombatTab:CreateToggle({
     Name = "Personagem Bugado (Seta)", CurrentValue = false, Flag = "BugMove",
-    Callback = function(v) if v then TDX.startBugMove() else TDX.stopBugMove() end end
+    Callback = function(v)
+        if v then TDX.startBugMove() else TDX.stopBugMove() end
+        notify("Personagem Bugado", v and "Ativado" or "Desativado")
+    end
 })
 CombatTab:CreateSlider({
     Name = "Velocidade do Bug", Range = {5, 40}, Increment = 1, Suffix = "x",
@@ -553,7 +611,10 @@ CombatTab:CreateSlider({
 CombatTab:CreateSection("Movimento")
 CombatTab:CreateToggle({
     Name = "Jump Power Boost", CurrentValue = false, Flag = "JumpPowerEnabled",
-    Callback = function(v) if v then TDX.startJumpPower() else TDX.stopJumpPower() end end
+    Callback = function(v)
+        if v then TDX.startJumpPower() else TDX.stopJumpPower() end
+        notify("Jump Power", v and "Ativado" or "Desativado")
+    end
 })
 CombatTab:CreateSlider({
     Name = "Jump Power", Range = {50, 150}, Increment = 5, Suffix = "",
@@ -571,23 +632,54 @@ CombatTab:CreateSlider({
 -- ===== TAB VISUAL =====
 local VisualTab = Window:CreateTab("Visual", 4483362458)
 
-VisualTab:CreateToggle({ Name = "Anti-Lag Máximo", CurrentValue = false, Flag = "AntiLag", Callback = function(v) TDX.applyAntiLag(v) end })
-VisualTab:CreateToggle({ Name = "FPS Boost Extra", CurrentValue = false, Flag = "FPSBoost", Callback = function(v) TDX.applyFPSBoost(v) end })
-VisualTab:CreateToggle({ Name = "Fullbright (Tudo Claro)", CurrentValue = false, Flag = "Fullbright", Callback = function(v) TDX.applyFullbright(v) end })
-VisualTab:CreateToggle({ Name = "FOV (Tela Aberta)", CurrentValue = false, Flag = "FOVEnabled", Callback = function(v) TDX.applyFOV(v) end })
+VisualTab:CreateToggle({
+    Name = "Anti-Lag Máximo", CurrentValue = false, Flag = "AntiLag",
+    Callback = function(v) TDX.applyAntiLag(v); notify("Anti-Lag", v and "Ativado" or "Desativado") end
+})
+VisualTab:CreateToggle({
+    Name = "FPS Boost Extra", CurrentValue = false, Flag = "FPSBoost",
+    Callback = function(v) TDX.applyFPSBoost(v); notify("FPS Boost", v and "Ativado" or "Desativado") end
+})
+VisualTab:CreateToggle({
+    Name = "Fullbright (Tudo Claro)", CurrentValue = false, Flag = "Fullbright",
+    Callback = function(v) TDX.applyFullbright(v); notify("Fullbright", v and "Ativado" or "Desativado") end
+})
+VisualTab:CreateToggle({
+    Name = "FOV (Tela Aberta)", CurrentValue = false, Flag = "FOVEnabled",
+    Callback = function(v) TDX.applyFOV(v); notify("FOV", v and "Ativado" or "Desativado") end
+})
 VisualTab:CreateSlider({
     Name = "FOV", Range = {70, 140}, Increment = 1, Suffix = "FOV", CurrentValue = 120, Flag = "FOV",
     Callback = function(v) CFG.FOV = v; if CFG.FOVEnabled then workspace.CurrentCamera.FieldOfView = v end end
 })
 VisualTab:CreateDropdown({
     Name = "Skybox", Options = {"Nenhum", "Night", "Purple", "Dragon"}, CurrentOption = {"Nenhum"}, Flag = "Skybox",
-    Callback = function(opt) TDX.setSkybox(type(opt) == "table" and opt[1] or opt) end
+    Callback = function(opt)
+        local name = type(opt) == "table" and opt[1] or opt
+        TDX.setSkybox(name)
+        notify("Skybox", "Mudou para: " .. name)
+    end
+})
+
+-- ============================================
+-- BUG DA CÂMERA
+-- ============================================
+VisualTab:CreateSection("Câmera")
+VisualTab:CreateToggle({
+    Name = "Bug da Câmera (Gruda no Torso)", CurrentValue = false, Flag = "CamBug",
+    Callback = function(v)
+        if v then TDX.startCamBug() else TDX.stopCamBug() end
+        notify("Bug da Câmera", v and "Ativado" or "Desativado")
+    end
 })
 
 VisualTab:CreateSection("Desempenho")
 VisualTab:CreateToggle({
     Name = "Limitar FPS (FPS Cap)", CurrentValue = false, Flag = "FPSCapEnabled",
-    Callback = function(v) if v then TDX.startFPSCap() else TDX.stopFPSCap() end end
+    Callback = function(v)
+        if v then TDX.startFPSCap() else TDX.stopFPSCap() end
+        notify("FPS Cap", v and ("Limitado em " .. CFG.FPSCapValue .. " FPS") or "Desativado")
+    end
 })
 VisualTab:CreateSlider({
     Name = "Limite de FPS", Range = {30, 144}, Increment = 5, Suffix = " FPS",
@@ -602,7 +694,10 @@ VisualTab:CreateParagraph({
 VisualTab:CreateSection("Interface")
 VisualTab:CreateToggle({
     Name = "Mostrar FPS", CurrentValue = true, Flag = "ShowFPS",
-    Callback = function(v) TDX.fpsLabel.Visible = v end
+    Callback = function(v)
+        TDX.fpsLabel.Visible = v
+        notify("FPS Counter", v and "Visível" or "Ocultado")
+    end
 })
 VisualTab:CreateParagraph({
     Title = "FPS Counter",
@@ -611,10 +706,17 @@ VisualTab:CreateParagraph({
 
 -- ===== TAB ESP =====
 local ESPTab = Window:CreateTab("ESP", 4483362458)
-ESPTab:CreateToggle({ Name = "ESP Bots", CurrentValue = false, Flag = "ESP", Callback = function(v) CFG.ESP = v; TDX.applyESP(v) end })
+ESPTab:CreateToggle({
+    Name = "ESP Bots", CurrentValue = false, Flag = "ESP",
+    Callback = function(v) CFG.ESP = v; TDX.applyESP(v); notify("ESP Bots", v and "Ativado" or "Desativado") end
+})
 ESPTab:CreateToggle({
     Name = "ESP Players (além dos bots)", CurrentValue = false, Flag = "ESPPlayers",
-    Callback = function(v) CFG.ESPPlayers = v; if CFG.ESP then TDX.applyESP(true) end end
+    Callback = function(v)
+        CFG.ESPPlayers = v
+        if CFG.ESP then TDX.applyESP(true) end
+        notify("ESP Players", v and "Ativado" or "Desativado")
+    end
 })
 
 -- ===== TAB EXTRAS =====
@@ -623,10 +725,10 @@ ExtraTab:CreateButton({
     Name = "Resetar Tudo",
     Callback = function()
         TDX.stopStrafeTurn(); TDX.stopBugMove(); TDX.stopJumpPower()
-        TDX.stopFPSCap()
+        TDX.stopFPSCap(); TDX.stopCamBug()
         TDX.applyESP(false); TDX.applyAntiLag(false); TDX.applyFPSBoost(false)
         TDX.applyFOV(false); TDX.applyFullbright(false); TDX.setSkybox("Nenhum")
-        print("[TDX] Reset completo")
+        notify("TD XITERS", "Tudo resetado com sucesso")
     end
 })
 ExtraTab:CreateButton({
@@ -637,22 +739,33 @@ ExtraTab:CreateButton({
             local hum = char:FindFirstChildOfClass("Humanoid")
             if hum then hum.Health = 0 end
         end
+        notify("Respawn", "Ressuscitando...")
     end
 })
 ExtraTab:CreateButton({
     Name = "Rejoin Servidor",
     Callback = function()
+        notify("Rejoin", "Reconectando ao servidor...")
+        task.wait(1)
         game:GetService("TeleportService"):Teleport(game.PlaceId, LP)
     end
 })
 ExtraTab:CreateButton({
     Name = "Destruir Interface",
     Callback = function()
+        notify("TD XITERS", "Fechando...")
+        task.wait(0.5)
         Rayfield:Destroy()
         TDX.fpsGui:Destroy()
         _G.TDX_LOADED = false
     end
 })
 
-Rayfield:Notify({ Title = "TD XITERS v3.6", Content = "Script carregado!", Duration = 4 })
-print("✅ TD XITERS v3.6 carregado")
+-- ===== NOTIFY FINAL =====
+Rayfield:Notify({
+    Title = "TD XITERS v3.7",
+    Content = "Script carregado com sucesso!",
+    Duration = 4
+})
+
+print("✅ TD XITERS v3.7 carregado")
