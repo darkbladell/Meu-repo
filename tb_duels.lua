@@ -1,6 +1,6 @@
 -- ============================================
--- TD XITERS v3.4 - PARTE 1/2
--- Loading + FPS Counter + Funções
+-- TD XITERS v3.6 - PARTE 1/2
+-- Loading + FPS Cap + FPS Counter + Funções
 -- ============================================
 
 if _G.TDX_LOADED then return end
@@ -93,6 +93,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
+local UIS = game:GetService("UserInputService")
 local LP = Players.LocalPlayer
 
 _G.TDX = _G.TDX or {}
@@ -105,8 +106,9 @@ TDX.CFG = {
     JumpPowerEnabled = false, JumpPowerValue = 75,
     Fullbright = false,
     BugMove = false, BugMoveSpeed = 15, BugMoveAmp = 0.5,
-    StrafeFlick = false, FlickForce = 50,
+    StrafeTurn = false,
     ShowFPS = true,
+    FPSCapEnabled = false, FPSCapValue = 60,
 }
 TDX.ORIGINAL_FOV = workspace.CurrentCamera.FieldOfView
 local CFG = TDX.CFG
@@ -114,7 +116,7 @@ local CFG = TDX.CFG
 local Window = Rayfield:CreateWindow({
     Name = "TD XITERS",
     LoadingTitle = "TD Xiters",
-    LoadingSubtitle = "v3.4 • Timebomb Duels",
+    LoadingSubtitle = "v3.6 • Timebomb Duels",
     Icon = 4483362458,
     ConfigurationSaving = { Enabled = false },
     KeySystem = false,
@@ -122,7 +124,28 @@ local Window = Rayfield:CreateWindow({
 TDX.Window = Window
 
 -- ============================================
--- CONTADOR DE FPS
+-- FPS CAP (LIMITADOR DE FPS)
+-- ============================================
+local fpsCapConn = nil
+
+local function startFPSCap()
+    if fpsCapConn then return end
+    CFG.FPSCapEnabled = true
+    fpsCapConn = RunService.Heartbeat:Connect(function()
+        if not CFG.FPSCapEnabled then return end
+        local now = tick()
+        local target = 1 / CFG.FPSCapValue
+        while (tick() - now) < target do end
+    end)
+end
+
+local function stopFPSCap()
+    CFG.FPSCapEnabled = false
+    if fpsCapConn then fpsCapConn:Disconnect() fpsCapConn = nil end
+end
+
+-- ============================================
+-- CONTADOR DE FPS (SÓ NÚMEROS, ARRASTÁVEL)
 -- ============================================
 local fpsGui = Instance.new("ScreenGui")
 fpsGui.Name = "TDX_FPS"
@@ -131,34 +154,72 @@ fpsGui.IgnoreGuiInset = true
 fpsGui.DisplayOrder = 20
 fpsGui.Parent = LP:WaitForChild("PlayerGui")
 
-local fpsFrame = Instance.new("Frame")
-fpsFrame.Size = UDim2.new(0, 60, 0, 40)
-fpsFrame.Position = UDim2.new(0, 10, 0, 10)
-fpsFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-fpsFrame.BackgroundTransparency = 0.3
-fpsFrame.BorderSizePixel = 0
-fpsFrame.Parent = fpsGui
-
-local fpsCorner = Instance.new("UICorner")
-fpsCorner.CornerRadius = UDim.new(0, 4)
-fpsCorner.Parent = fpsFrame
-
-local fpsStroke = Instance.new("UIStroke")
-fpsStroke.Color = Color3.fromRGB(255, 220, 0)
-fpsStroke.Thickness = 2
-fpsStroke.Parent = fpsFrame
-
 local fpsLabel = Instance.new("TextLabel")
-fpsLabel.Size = UDim2.new(1, 0, 1, 0)
+fpsLabel.Size = UDim2.new(0, 80, 0, 30)
+fpsLabel.Position = UDim2.new(0, 20, 0, 20)
 fpsLabel.BackgroundTransparency = 1
 fpsLabel.Text = "--"
 fpsLabel.TextColor3 = Color3.fromRGB(255, 220, 0)
+fpsLabel.TextStrokeTransparency = 0
+fpsLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 fpsLabel.Font = Enum.Font.GothamBold
-fpsLabel.TextSize = 22
-fpsLabel.Parent = fpsFrame
+fpsLabel.TextSize = 28
+fpsLabel.TextXAlignment = Enum.TextXAlignment.Left
+fpsLabel.Parent = fpsGui
 
-TDX.fpsFrame = fpsFrame
-TDX.fpsGui = fpsGui
+local fpsBtn = Instance.new("TextButton")
+fpsBtn.Size = UDim2.new(1, 0, 1, 0)
+fpsBtn.BackgroundTransparency = 1
+fpsBtn.Text = ""
+fpsBtn.Parent = fpsLabel
+
+local dragging = false
+local dragStart, startPos
+local locked = false
+
+fpsBtn.InputBegan:Connect(function(input)
+    if locked then return end
+    if input.UserInputType == Enum.UserInputType.Touch
+    or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = fpsLabel.Position
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if dragging and not locked then
+        if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            fpsLabel.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+        end
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+    or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+local lastClick = 0
+fpsBtn.MouseButton1Click:Connect(function()
+    local now = tick()
+    if now - lastClick < 0.4 then
+        locked = not locked
+        if locked then
+            fpsLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+        else
+            fpsLabel.TextColor3 = Color3.fromRGB(255, 220, 0)
+        end
+    end
+    lastClick = now
+end)
 
 local frameCount = 0
 local lastTime = tick()
@@ -167,22 +228,23 @@ RunService.RenderStepped:Connect(function()
     frameCount = frameCount + 1
     local now = tick()
     if now - lastTime >= 1 then
-        local fps = frameCount
-        fpsLabel.Text = tostring(fps)
-        if fps >= 50 then
-            fpsStroke.Color = Color3.fromRGB(0, 255, 100)
-            fpsLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
-        elseif fps >= 30 then
-            fpsStroke.Color = Color3.fromRGB(255, 220, 0)
-            fpsLabel.TextColor3 = Color3.fromRGB(255, 220, 0)
-        else
-            fpsStroke.Color = Color3.fromRGB(255, 50, 50)
-            fpsLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+        fpsLabel.Text = tostring(frameCount)
+        if not locked then
+            if frameCount >= 50 then
+                fpsLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
+            elseif frameCount >= 30 then
+                fpsLabel.TextColor3 = Color3.fromRGB(255, 220, 0)
+            else
+                fpsLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            end
         end
         frameCount = 0
         lastTime = now
     end
 end)
+
+TDX.fpsLabel = fpsLabel
+TDX.fpsGui = fpsGui
 
 -- ============================================
 -- ANTI-LAG
@@ -309,42 +371,33 @@ local function stopBugMove()
     if bugMoveConn then bugMoveConn:Disconnect() bugMoveConn = nil end
 end
 
--- ===== STRAFE FLICK (GRUDA NA PAREDE + PULA PROS LADOS) =====
-local strafeFlickConn = nil
-local function startStrafeFlick()
-    if strafeFlickConn then return end
-    CFG.StrafeFlick = true
-    strafeFlickConn = RunService.Heartbeat:Connect(function(dt)
-        if not CFG.StrafeFlick then return end
+-- ===== STRAFE VIRAR =====
+local strafeTurnConn, strafeCooldown = nil, false
+local function startStrafeTurn()
+    if strafeTurnConn then return end
+    CFG.StrafeTurn = true
+    strafeTurnConn = RunService.Heartbeat:Connect(function(dt)
+        if not CFG.StrafeTurn then return end
         local char = LP.Character
         if not char then return end
         local hum = char:FindFirstChildOfClass("Humanoid")
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hum or not hrp then return end
-
-        local rayParams = RaycastParams.new()
-        rayParams.FilterType = Enum.RaycastFilterType.Exclude
-        rayParams.FilterDescendantsInstances = {char}
-
-        local ray = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 3, rayParams)
-
-        if ray and math.abs(ray.Normal.Y) < 0.3 then
-            hrp.Velocity = Vector3.new(hrp.Velocity.X, 0, hrp.Velocity.Z)
-            hrp.CFrame = hrp.CFrame + (-ray.Normal * 0.05)
-
-            local state = hum:GetState()
-            if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall then
-                local right = ray.Normal:Cross(Vector3.new(0, 1, 0)).Unit
-                local side = (math.random() > 0.5) and right or -right
-                hrp.Velocity = hrp.Velocity + side * CFG.FlickForce
-                hrp.Velocity = Vector3.new(hrp.Velocity.X, 30, hrp.Velocity.Z)
+        local state = hum:GetState()
+        if (state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall) and not strafeCooldown then
+            if hum.MoveDirection.Magnitude > 0.1 then
+                strafeCooldown = true
+                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(180), 0)
+                task.wait(0.4)
+                strafeCooldown = false
             end
         end
     end)
 end
-local function stopStrafeFlick()
-    CFG.StrafeFlick = false
-    if strafeFlickConn then strafeFlickConn:Disconnect() strafeFlickConn = nil end
+local function stopStrafeTurn()
+    CFG.StrafeTurn = false
+    if strafeTurnConn then strafeTurnConn:Disconnect() strafeTurnConn = nil end
+    strafeCooldown = false
 end
 
 -- ===== JUMP POWER =====
@@ -453,15 +506,17 @@ TDX.applyFOV = applyFOV
 TDX.setSkybox = setSkybox
 TDX.startBugMove = startBugMove
 TDX.stopBugMove = stopBugMove
-TDX.startStrafeFlick = startStrafeFlick
-TDX.stopStrafeFlick = stopStrafeFlick
+TDX.startStrafeTurn = startStrafeTurn
+TDX.stopStrafeTurn = stopStrafeTurn
 TDX.startJumpPower = startJumpPower
 TDX.stopJumpPower = stopJumpPower
 TDX.applyESP = applyESP
+TDX.startFPSCap = startFPSCap
+TDX.stopFPSCap = stopFPSCap
 
 print("✅ Parte 1 carregada")
 -- ============================================
--- TD XITERS v3.4 - PARTE 2/2
+-- TD XITERS v3.6 - PARTE 2/2
 -- Menus: Combate + Visual + ESP + Extras
 -- ============================================
 
@@ -475,13 +530,8 @@ local CombatTab = Window:CreateTab("Combate", 4483362458)
 
 CombatTab:CreateSection("Movimento Bugado")
 CombatTab:CreateToggle({
-    Name = "Strafe Flick (Gruda + Pula Lados)", CurrentValue = false, Flag = "StrafeFlick",
-    Callback = function(v) if v then TDX.startStrafeFlick() else TDX.stopStrafeFlick() end end
-})
-CombatTab:CreateSlider({
-    Name = "Força do Flick", Range = {20, 150}, Increment = 5, Suffix = "",
-    CurrentValue = 50, Flag = "FlickForce",
-    Callback = function(v) CFG.FlickForce = v end
+    Name = "Strafe Virar (Gira no Pulo)", CurrentValue = false, Flag = "StrafeTurn",
+    Callback = function(v) if v then TDX.startStrafeTurn() else TDX.stopStrafeTurn() end end
 })
 
 CombatTab:CreateSection("Personagem Bugado")
@@ -533,10 +583,30 @@ VisualTab:CreateDropdown({
     Name = "Skybox", Options = {"Nenhum", "Night", "Purple", "Dragon"}, CurrentOption = {"Nenhum"}, Flag = "Skybox",
     Callback = function(opt) TDX.setSkybox(type(opt) == "table" and opt[1] or opt) end
 })
+
+VisualTab:CreateSection("Desempenho")
+VisualTab:CreateToggle({
+    Name = "Limitar FPS (FPS Cap)", CurrentValue = false, Flag = "FPSCapEnabled",
+    Callback = function(v) if v then TDX.startFPSCap() else TDX.stopFPSCap() end end
+})
+VisualTab:CreateSlider({
+    Name = "Limite de FPS", Range = {30, 144}, Increment = 5, Suffix = " FPS",
+    CurrentValue = 60, Flag = "FPSCapValue",
+    Callback = function(v) CFG.FPSCapValue = v end
+})
+VisualTab:CreateParagraph({
+    Title = "Sobre o FPS Cap",
+    Content = "Limita o FPS do jogo. Útil pra evitar stutter em celular fraco. Recomendado: 30 ou 60.",
+})
+
 VisualTab:CreateSection("Interface")
 VisualTab:CreateToggle({
     Name = "Mostrar FPS", CurrentValue = true, Flag = "ShowFPS",
-    Callback = function(v) TDX.fpsFrame.Visible = v end
+    Callback = function(v) TDX.fpsLabel.Visible = v end
+})
+VisualTab:CreateParagraph({
+    Title = "FPS Counter",
+    Content = "Arraste o número do FPS pra mover. Duplo clique trava no lugar.",
 })
 
 -- ===== TAB ESP =====
@@ -552,7 +622,8 @@ local ExtraTab = Window:CreateTab("Extras", 4483362458)
 ExtraTab:CreateButton({
     Name = "Resetar Tudo",
     Callback = function()
-        TDX.stopStrafeFlick(); TDX.stopBugMove(); TDX.stopJumpPower()
+        TDX.stopStrafeTurn(); TDX.stopBugMove(); TDX.stopJumpPower()
+        TDX.stopFPSCap()
         TDX.applyESP(false); TDX.applyAntiLag(false); TDX.applyFPSBoost(false)
         TDX.applyFOV(false); TDX.applyFullbright(false); TDX.setSkybox("Nenhum")
         print("[TDX] Reset completo")
@@ -583,5 +654,5 @@ ExtraTab:CreateButton({
     end
 })
 
-Rayfield:Notify({ Title = "TD XITERS v3.4", Content = "Script carregado!", Duration = 4 })
-print("✅ TD XITERS v3.4 carregado")
+Rayfield:Notify({ Title = "TD XITERS v3.6", Content = "Script carregado!", Duration = 4 })
+print("✅ TD XITERS v3.6 carregado")
